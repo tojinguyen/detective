@@ -1,0 +1,184 @@
+[
+  {
+    "id": 29,
+    "grade": 7,
+    "topic": "Số hữu tỉ và dấu ngoặc",
+    "auditStatus": "approved",
+    "kind": "symbol",
+    "answer": "-",
+    "target": 1,
+    "segments": [
+      "1{,}7",
+      "+",
+      "1{,}7"
+    ],
+    "intro": "Mình đang soát phiếu cho buổi sinh hoạt. Cậu giúp mình xem phép tính nào bị làm sai nhé?",
+    "hint": "So sánh dấu nằm giữa hai ngoặc ở dòng đầu với dấu giữa hai số ở dòng 2.",
+    "explanation": "Tính trong hai ngoặc đều được 1,7. Dấu trừ giữa hai ngoặc vẫn phải giữ nguyên: 1,7 − 1,7 = 0.",
+    "repairLabel": "Thay dấu đã chọn bằng dấu đúng.",
+    "difficulty": "Dễ",
+    "givenLine": 2,
+    "bad": [
+      "(5{,}1 - 3{,}4) - (-3{,}4 + 5{,}1)",
+      "= 1{,}7 + 1{,}7",
+      "= 3{,}4"
+    ],
+    "correct": [
+      "(5{,}1 - 3{,}4) - (-3{,}4 + 5{,}1)",
+      "= 1{,}7 - 1{,}7",
+      "= 0"
+    ],
+    "sourceLatex": "\\textbf{Bài 29} \\\\\n\\textbf{Mức độ: Dễ} \\\\\n\\textit{Lỗi bắt đầu ở dòng 2. Hãy tìm số bị làm sai!}\n\\textit{(Sai tính toán)}\n\n\\textbf{Bài có lỗi:}\n\\begin{align*}\n  & (5,1 - 3,4) - (-3,4 + 5,1) \\\\\n  = \\, & 1,7 + 1,7 \\\\\n  = \\, & 3,4\n\\end{align*}\n\n\\textbf{Bài đúng:}\n\\begin{align*}\n  & (5,1 - 3,4) - (-3,4 + 5,1) \\\\\n  = \\, & 1,7 - 1,7 \\\\\n  = \\, & 0\n\\end{align*}\n\n%Bài 30"
+  },
+  {
+    "id": 3,
+    "grade": 6,
+    "topic": "Thứ tự thực hiện phép tính",
+    "auditStatus": "approved",
+    "kind": "value",
+    "answer": 8,
+    "target": 6,
+    "segments": [
+      "[5",
+      "+",
+      "2",
+      "\\cdot",
+      "(9",
+      "-",
+      "6",
+      ")]:",
+      "7"
+    ],
+    "intro": "Trong sổ này có một phép tính lũy thừa mình chưa yên tâm. Cậu kiểm tra giúp mình nha.",
+    "hint": "Lũy thừa 2³ nghĩa là 2 × 2 × 2, không phải 2 × 3.",
+    "explanation": "2³ = 2 × 2 × 2 = 8. Thay lại vào biểu thức, kết quả cuối cùng là 1.",
+    "repairLabel": "Nhập giá trị đúng thay cho số 6.",
+    "difficulty": "Dễ",
+    "givenLine": 2,
+    "bad": [
+      "[5 + 2 \\cdot (9 - 2^3)] : 7",
+      "= [5 + 2 \\cdot (9 - 6)] : 7",
+      "= [5 + 2 \\cdot 3] : 7",
+      "= [5 + 6] : 7",
+      "= 11 : 7"
+    ],
+    "correct": [
+      "[5 + 2 \\cdot (9 - 2^3)] : 7",
+      "= [5 + 2 \\cdot (9 - 8)] : 7",
+      "= [5 + 2 \\cdot 1] : 7",
+      "= [5 + 2] : 7",
+      "= 7 : 7",
+      "= 1"
+    ],
+    "sourceLatex": "\\textbf{Bài 3}\n\\textbf{Mức độ: Dễ} \\\\\n\\textit{Lỗi bắt đầu ở dòng 2. Hãy tìm số bị làm sai!}\n\\textit{(Sai tính toán} \n\n\\textbf{Bài có lỗi:}\n\\begin{align*}\n  & [5 + 2 \\cdot (9 - 2^3)] : 7 \\\\\n= \\, & [5 + 2 \\cdot (9 - 6)] : 7 \\\\\n= \\, & [5 + 2 \\cdot 3] : 7 \\\\\n= \\, & [5 + 6] : 7 \\\\\n= \\, & 11 : 7\n\\end{align*}\n\n\\textbf{Bài đúng:}\n\\begin{align*}\n  & [5 + 2 \\cdot (9 - 2^3)] : 7 \\\\\n= \\, & [5 + 2 \\cdot (9 - 8)] : 7 \\\\\n= \\, & [5 + 2 \\cdot 1] : 7 \\\\\n= \\, & [5 + 2] : 7 \\\\\n= \\, & 7 : 7 \\\\\n= \\, & 1\n\\end{align*}"
+  },
+  {
+    "id": 7,
+    "grade": 7,
+    "topic": "Quy tắc chuyển vế",
+    "auditStatus": "approved",
+    "kind": "symbol",
+    "answer": "-",
+    "target": 3,
+    "segments": [
+      "x",
+      "=",
+      "-\\frac{6}{7}",
+      "+",
+      "\\frac{1}{2}"
+    ],
+    "intro": "Mình đang kiểm tra lời giải tìm x. Có vẻ một dấu đã đổi chưa đúng…",
+    "hint": "Muốn giữ hai vế bằng nhau, hãy trừ 1/2 ở cả hai vế.",
+    "explanation": "Trừ 1/2 ở hai vế: x = −6/7 − 1/2 = −19/14.",
+    "repairLabel": "Thay dấu đã chọn bằng dấu đúng.",
+    "difficulty": null,
+    "givenLine": 2,
+    "bad": [
+      "x + \\frac{1}{2} = -\\frac{6}{7}",
+      "x = -\\frac{6}{7} + \\frac{1}{2}",
+      "x = -\\frac{12}{14} + \\frac{7}{14}",
+      "x = -\\frac{5}{14}"
+    ],
+    "correct": [
+      "x + \\frac{1}{2} = -\\frac{6}{7}",
+      "x = -\\frac{6}{7} - \\frac{1}{2}",
+      "x = -\\frac{12}{14} - \\frac{7}{14}",
+      "x = -\\frac{19}{14}"
+    ],
+    "sourceLatex": "\\textbf{Bài 7}\n\\textit{Lỗi bắt đầu ở dòng 2. Hãy tìm số bị làm sai!}\n\\textit{(Sai quy tắc chuyển vế)}\n\n\\textbf{Bài có lỗi:}\n\\begin{align*}\n  & x + \\frac{1}{2} = -\\frac{6}{7} \\\\\n  & x = -\\frac{6}{7} + \\frac{1}{2} \\\\\n  & x = -\\frac{12}{14} + \\frac{7}{14} \\\\\n  & x = -\\frac{5}{14}\n\\end{align*}\n\n\\textbf{Bài đúng:}\n\\begin{align*}\n  & x + \\frac{1}{2} = -\\frac{6}{7} \\\\\n  & x = -\\frac{6}{7} - \\frac{1}{2} \\\\\n  & x = -\\frac{12}{14} - \\frac{7}{14} \\\\\n  & x = -\\frac{19}{14}\n\\end{align*}\n\n%Bài 8"
+  },
+  {
+    "id": 4,
+    "grade": 6,
+    "topic": "Thứ tự thực hiện phép tính",
+    "auditStatus": "approved",
+    "kind": "expression",
+    "answer": 64,
+    "target": 0,
+    "segments": [
+      "46",
+      ":",
+      "2",
+      "\\cdot",
+      "3"
+    ],
+    "intro": "Mình ra 69, nhưng không chắc đã làm đúng thứ tự. Cậu cùng kiểm tra bước đầu tiên nhé.",
+    "hint": "Nhân và chia làm trước cộng và trừ. Với 36 : 2 · 3, thực hiện từ trái sang phải.",
+    "explanation": "Phải tính 36 : 2 trước: 10 + 18 · 3 = 10 + 54 = 64. Số 46 xuất hiện do cộng 10 + 36 quá sớm.",
+    "repairLabel": "Viết lại dòng 2 đúng. Có thể nhập một bước biến đổi đúng hoặc kết quả.",
+    "difficulty": "Dễ",
+    "givenLine": 2,
+    "bad": [
+      "10 + 36 : 2 \\cdot 3",
+      "= 46 : 2 \\cdot 3",
+      "= 23 \\cdot 3",
+      "= 69"
+    ],
+    "correct": [
+      "10 + 36 : 2 \\cdot 3",
+      "= 10 + 18 \\cdot 3",
+      "= 10 + 54",
+      "= 64"
+    ],
+    "sourceLatex": "\\textbf{Bài 4}\n\\textbf{Mức độ: Dễ} \\\\\n\\textit{Lỗi bắt đầu ở dòng 2. Hãy tìm số bị làm sai!}\n\\textit{(Sai thứ tự thực hiện phép tính)}\n\n\\textbf{Bài có lỗi:}\n\\begin{align*}\n  & 10 + 36 : 2 \\cdot 3 \\\\\n= \\, & 46 : 2 \\cdot 3 \\\\\n= \\, & 23 \\cdot 3 \\\\\n= \\, & 69\n\\end{align*}\n\n\\textbf{Bài đúng:}\n\\begin{align*}\n  & 10 + 36 : 2 \\cdot 3 \\\\\n= \\, & 10 + 18 \\cdot 3 \\\\\n= \\, & 10 + 54 \\\\\n= \\, & 64\n\\end{align*}\n\n%Bài 5"
+  },
+  {
+    "id": 18,
+    "grade": 7,
+    "topic": "Phương trình với số thập phân",
+    "auditStatus": "approved",
+    "kind": "symbol",
+    "answer": "/",
+    "target": 5,
+    "segments": [
+      "x",
+      "-",
+      "\\frac{9}{10}",
+      "=",
+      "(-1{,}2)",
+      "\\cdot",
+      "(-0{,}12)"
+    ],
+    "intro": "Mình còn vướng phiếu này trước khi tổng hợp ghi chép. Cậu tìm lỗi đầu tiên giúp mình được không?",
+    "hint": "Hệ số −0,12 đang nhân với cả ngoặc. Muốn bỏ hệ số này, cần chia cả hai vế cho −0,12.",
+    "explanation": "Chia cả hai vế cho −0,12, được x − 9/10 = 10. Vì thế x = 109/10.",
+    "repairLabel": "Thay phép tính đã chọn bằng phép tính đúng.",
+    "difficulty": "Trung bình",
+    "givenLine": null,
+    "bad": [
+      "(-0{,}12) \\cdot \\left( x - \\frac{9}{10} \\right) = -1{,}2",
+      "x - \\frac{9}{10} = (-1{,}2) \\cdot (-0{,}12)",
+      "x - \\frac{9}{10} = 0{,}144",
+      "x = 0{,}144 + \\frac{9}{10}",
+      "x = 0{,}144 + 0{,}9 = 1{,}044"
+    ],
+    "correct": [
+      "(-0{,}12) \\cdot \\left( x - \\frac{9}{10} \\right) = -1{,}2",
+      "x - \\frac{9}{10} = (-1{,}2) : (-0{,}12)",
+      "x - \\frac{9}{10} = 10",
+      "x = 10 + \\frac{9}{10}",
+      "x = \\frac{109}{10}"
+    ],
+    "sourceLatex": "\\textbf{Bài 18} \\\\\n\\textbf{Mức độ: Trung bình} \\\\\n\\textit{Một phép sai có thể làm các bước sau sai theo. Hãy tìm lỗi đầu tiên xuất hiện!}\n\\textit{(Sai quy tắc chuyển vế)}\n\n\\textbf{Bài có lỗi:}\n\\textbf{Bài có lỗi:}\n\\begin{align*}\n  & (-0,12) \\cdot \\left( x - \\frac{9}{10} \\right) = -1,2 \\\\\n  & x - \\frac{9}{10} = (-1,2) \\cdot (-0,12) \\\\\n  & x - \\frac{9}{10} = 0,144 \\\\\n  & x = 0,144 + \\frac{9}{10} \\\\\n  & x = 0,144 + 0,9 = 1,044\n\\end{align*}\n\n\n\\textbf{Bài đúng:}\n\\begin{align*}\n  & (-0,12) \\cdot \\left( x - \\frac{9}{10} \\right) = -1,2 \\\\\n  & x - \\frac{9}{10} = (-1,2) : (-0,12) \\\\\n  & x - \\frac{9}{10} = 10 \\\\\n  & x = 10 + \\frac{9}{10} \\\\\n  & x = \\frac{109}{10}\n\\end{align*}"
+  }
+]
