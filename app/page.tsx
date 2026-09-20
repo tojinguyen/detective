@@ -51,7 +51,7 @@ function CloseButton() {
 }
 
 export default function Home() {
-  const { user, profile, isAdmin, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut, loading } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
   const [tab, setTab] = useState('rooms');
   const [work, setWork] = useState<Work[]>(initialWork);
@@ -87,7 +87,9 @@ export default function Home() {
   const preFinalCandidates = candidates(caseData, caseData.clues.map((_, index) => index).filter(index => index !== caseData.finalRoomIndex)).length;
   const report = investigationReport(work);
   const timingContext = useRef({ active, screen, stage: current?.stage });
-  timingContext.current = { active, screen, stage: current?.stage };
+  useEffect(() => {
+    timingContext.current = { active, screen, stage: current?.stage };
+  }, [active, screen, current?.stage]);
 
   const openRoom = useCallback((index: number) => {
     if (caseData.rooms[index].final && !sideRoomsDone) {
@@ -243,6 +245,18 @@ export default function Home() {
     setPlayer({ x: 50, y: 57 }); setFacing('front'); setWalking(false); setNotebookOpen(false); setWorldMessage('Chọn một căn phòng để thám tử tự di chuyển tới vật chứng.');
   }
   function showBoard() { setActive(null); setTab('board'); }
+
+  if (loading) {
+    return (
+      <div className="game-shell min-h-screen flex items-center justify-center bg-[#171410] text-[#cbbda2]">
+        <div className="flex flex-col items-center gap-4 text-center px-4">
+          <div className="w-9 h-9 border-2 border-[#8a663b] border-t-transparent rounded-full animate-spin" />
+          <p className="font-serif italic text-base tracking-wide text-[#e8dfcf]">Đang kiểm tra hồ sơ thám tử...</p>
+          <span className="text-xs text-[#877d68] uppercase tracking-widest">E·RASE · Viện Lưu trữ & Hiện trường</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="game-shell">
@@ -404,7 +418,11 @@ export default function Home() {
 
       <AlertDialog open={restart} onOpenChange={setRestart}><AlertDialogContent className="paper-modal"><AlertDialogHeader><AlertDialogTitle>Bắt đầu lại vụ án?</AlertDialogTitle><AlertDialogDescription>Các phiếu đã sửa, manh mối và bảng đối chiếu trong lượt này sẽ được đặt lại.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel className="secondary-paper-button">Tiếp tục lượt này</AlertDialogCancel><AlertDialogAction className="gold-button" onClick={reset}>Bắt đầu lại</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
 
-      <AuthModal open={authOpen} onOpenChange={setAuthOpen} />
+      <AuthModal
+        open={!user ? true : authOpen}
+        onOpenChange={setAuthOpen}
+        mandatory={!user}
+      />
     </div>
   );
 }
