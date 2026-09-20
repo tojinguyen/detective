@@ -18,6 +18,19 @@ function slugify(text: string) {
     .replace(/^_|_$/g, '');
 }
 
+function getInternalEmail(name: string) {
+  const trimmed = name.trim();
+  const adminMatch = trimmed.match(/^admin\s*0?([1-5])$/i);
+  if (adminMatch) {
+    return `admin${adminMatch[1]}@erase.edu.vn`;
+  }
+  if (trimmed.includes('@')) {
+    return trimmed;
+  }
+  const slug = slugify(trimmed) || 'detective';
+  return `${slug}@player.erase.local`;
+}
+
 export function AuthModal({
   open,
   onOpenChange,
@@ -46,35 +59,17 @@ export function AuthModal({
     }
 
     try {
+      const internalEmail = getInternalEmail(trimmedName);
+
       if (isLogin) {
-        let targetEmail = '';
-
-        // 1. Tra cứu profile theo tên hiển thị (không phân biệt hoa/thường)
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('email')
-          .ilike('full_name', trimmedName)
-          .maybeSingle();
-
-        if (profile?.email) {
-          targetEmail = profile.email;
-        } else if (trimmedName.includes('@')) {
-          // Hỗ trợ nếu người dùng/admin nhập thẳng email
-          targetEmail = trimmedName;
-        }
-
-        if (!targetEmail) {
-          throw new Error('Không tìm thấy thám tử với tên này. Vui lòng kiểm tra lại hoặc chuyển sang Đăng ký.');
-        }
-
         const { error } = await supabase.auth.signInWithPassword({
-          email: targetEmail,
+          email: internalEmail,
           password,
         });
 
         if (error) {
           if (error.message.toLowerCase().includes('invalid login credentials')) {
-            throw new Error('Mật khẩu không chính xác. Vui lòng thử lại.');
+            throw new Error('Tên hiển thị hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.');
           }
           throw error;
         }
@@ -99,9 +94,6 @@ export function AuthModal({
           throw new Error('Tên hiển thị này đã có người sử dụng. Vui lòng chọn tên khác.');
         }
 
-        const safeSlug = slugify(trimmedName) || 'detective';
-        const internalEmail = `${safeSlug}_${Date.now()}@player.erase.local`;
-
         const { data, error } = await supabase.auth.signUp({
           email: internalEmail,
           password,
@@ -113,7 +105,6 @@ export function AuthModal({
         if (data?.session) {
           onOpenChange(false);
         } else {
-          // Tự động đăng nhập ngay sau khi đăng ký
           const { error: loginError } = await supabase.auth.signInWithPassword({
             email: internalEmail,
             password,

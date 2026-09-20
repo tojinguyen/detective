@@ -211,7 +211,6 @@ export default function Home() {
       const rep = investigationReport(work);
       await supabase.from('investigation_sessions').insert({
         user_id: user?.id ?? null,
-        user_email: user?.email ?? 'anonymous@student.local',
         user_name: profile?.full_name ?? 'Học sinh ẩn danh',
         case_id: caseData.id,
         won: result.won,
@@ -274,7 +273,7 @@ export default function Home() {
           )}
           {user ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#deb97b] font-medium">{profile?.full_name || user.email}</span>
+              <span className="text-xs text-[#deb97b] font-medium">{profile?.full_name || 'Thám tử'}</span>
               <Button variant="ghost" className="quiet-button" onClick={signOut} title="Đăng xuất"><LogOut size={16} /></Button>
             </div>
           ) : (

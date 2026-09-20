@@ -21,7 +21,6 @@ interface InvestigationSession {
   id: string | number;
   user_id: string | null;
   user_name: string | null;
-  user_email: string | null;
   case_id: string;
   won: boolean;
   active_seconds: number;
@@ -55,8 +54,7 @@ export default function AdminDashboardPage() {
   }, [isAdmin]);
 
   const filtered = sessions.filter(s =>
-    (s.user_name || '').toLowerCase().includes(search.toLowerCase()) ||
-    (s.user_email || '').toLowerCase().includes(search.toLowerCase())
+    (s.user_name || '').toLowerCase().includes(search.toLowerCase())
   );
 
   const totalWon = sessions.filter(s => s.won).length;
@@ -71,10 +69,9 @@ export default function AdminDashboardPage() {
   }
 
   function exportCSV() {
-    const header = ['Học sinh', 'Email', 'Thời gian làm', 'Rời tab (lần)', 'Treo máy', 'Kết quả', 'Ngày giờ'];
+    const header = ['Học sinh', 'Thời gian làm', 'Rời tab (lần)', 'Treo máy', 'Kết quả', 'Ngày giờ'];
     const rows = filtered.map(s => [
       `"${s.user_name || ''}"`,
-      s.user_email || '',
       fmt(s.active_seconds),
       s.tab_exits || 0,
       fmt(s.inactive_seconds),
@@ -141,7 +138,7 @@ export default function AdminDashboardPage() {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Tìm kiếm tên học sinh hoặc email..."
+          placeholder="Tìm kiếm tên học sinh..."
           className="bg-transparent border-none text-xs outline-none w-full text-[#e9e5d9]"
         />
       </div>
@@ -161,7 +158,7 @@ export default function AdminDashboardPage() {
           <tbody className="divide-y divide-[#243740]">
             {filtered.map(s => (
               <tr key={s.id} className="hover:bg-[#1f313a] transition-colors">
-                <td className="p-3 font-semibold text-[#f1ecdf]">{s.user_name}<div className="text-[10px] text-[#879896] font-normal">{s.user_email}</div></td>
+                <td className="p-3 font-semibold text-[#f1ecdf]">{s.user_name}</td>
                 <td className="p-3">{s.won ? <span className="text-[#7e9473] font-bold">✓ Phá án thành công</span> : <span className="text-[#d3765e]">✕ Sai/Chưa xong</span>}</td>
                 <td className="p-3 font-mono text-[#ceac79]">{fmt(s.active_seconds)}</td>
                 <td className="p-3">{s.tab_exits > 0 ? <span className="text-[#d3765e] font-semibold">{s.tab_exits} lần ({fmt(s.inactive_seconds)})</span> : <span className="text-[#7e9473]">Tập trung</span>}</td>
@@ -181,7 +178,7 @@ export default function AdminDashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="paper-modal max-w-lg w-full bg-[#132229] border border-[#ceac79] p-5 rounded-lg text-xs">
             <h3 className="text-base font-serif text-[#f1ecdf] font-bold mb-1">Chi tiết: {selected.user_name}</h3>
-            <p className="text-[#879896] mb-4">{selected.user_email} · Vụ {selected.case_id}</p>
+            <p className="text-[#879896] mb-4">Vụ án: {selected.case_id}</p>
             <div className="space-y-2 mb-4">
               {selected.records?.map((r: SessionRecord, idx: number) => (
                 <div key={idx} className="p-2.5 bg-[#0e1c22] border border-[#34474e] rounded flex justify-between">
