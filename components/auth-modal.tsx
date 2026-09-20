@@ -7,6 +7,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AlertCircle, X } from 'lucide-react';
 
+function slugify(text: string) {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
 export function AuthModal({
   open,
   onOpenChange,
@@ -17,9 +28,8 @@ export function AuthModal({
   mandatory?: boolean;
 }) {
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -28,23 +38,93 @@ export function AuthModal({
     setErrorMsg('');
     setLoading(true);
 
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      setErrorMsg('Vui lòng nhập tên hiển thị.');
+      setLoading(false);
+      return;
+    }
+
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        let targetEmail = '';
+
+        // 1. Tra cứu profile theo tên hiển thị (không phân biệt hoa/thường)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('email')
+          .ilike('full_name', trimmedName)
+          .maybeSingle();
+
+        if (profile?.email) {
+          targetEmail = profile.email;
+        } else if (trimmedName.includes('@')) {
+          // Hỗ trợ nếu người dùng/admin nhập thẳng email
+          targetEmail = trimmedName;
+        }
+
+        if (!targetEmail) {
+          throw new Error('Không tìm thấy thám tử với tên này. Vui lòng kiểm tra lại hoặc chuyển sang Đăng ký.');
+        }
+
+        const { error } = await supabase.auth.signInWithPassword({
+          email: targetEmail,
+          password,
+        });
+
+        if (error) {
+          if (error.message.toLowerCase().includes('invalid login credentials')) {
+            throw new Error('Mật khẩu không chính xác. Vui lòng thử lại.');
+          }
+          throw error;
+        }
+
         onOpenChange(false);
       } else {
+        if (trimmedName.length < 2) {
+          throw new Error('Tên hiển thị phải có ít nhất 2 ký tự.');
+        }
+        if (password.length < 6) {
+          throw new Error('Mật khẩu phải có ít nhất 6 ký tự.');
+        }
+
+        // Kiểm tra xem tên hiển thị đã có người dùng chưa
+        const { data: existing } = await supabase
+          .from('profiles')
+          .select('id')
+          .ilike('full_name', trimmedName)
+          .maybeSingle();
+
+        if (existing) {
+          throw new Error('Tên hiển thị này đã có người sử dụng. Vui lòng chọn tên khác.');
+        }
+
+        const safeSlug = slugify(trimmedName) || 'detective';
+        const internalEmail = `${safeSlug}_${Date.now()}@player.erase.local`;
+
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: internalEmail,
           password,
-          options: { data: { full_name: fullName, role: 'student' } }
+          options: { data: { full_name: trimmedName, role: 'student' } },
         });
+
         if (error) throw error;
+
         if (data?.session) {
           onOpenChange(false);
         } else {
-          alert('Đăng ký thành công! Hãy đăng nhập ngay với thông tin vừa tạo.');
-          setIsLogin(true);
+          // Tự động đăng nhập ngay sau khi đăng ký
+          const { error: loginError } = await supabase.auth.signInWithPassword({
+            email: internalEmail,
+            password,
+          });
+
+          if (!loginError) {
+            onOpenChange(false);
+          } else {
+            alert('Đăng ký hồ sơ thành công! Hãy đăng nhập với tên hiển thị vừa tạo.');
+            setIsLogin(true);
+          }
         }
       }
     } catch (err: unknown) {
@@ -88,8 +168,8 @@ export function AuthModal({
             {mandatory
               ? 'Bạn cần đăng nhập hoặc đăng ký tài khoản thám tử để mở khóa hồ sơ hiện trường vụ án.'
               : isLogin
-                ? 'Nhập tài khoản để ghi nhận tiến độ và nhật ký điều tra.'
-                : 'Tài khoản thám tử mới tham gia khám phá các vụ án.'}
+                ? 'Nhập tên thám tử và mật khẩu để ghi nhận tiến độ và nhật ký điều tra.'
+                : 'Tạo tên thám tử mới và mật khẩu để bắt đầu khám phá các vụ án.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -125,30 +205,16 @@ export function AuthModal({
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
-          {!isLogin && (
-            <div>
-              <label className="text-xs text-[#9eb0ab] font-medium block mb-1">
-                Họ và tên thám tử
-              </label>
-              <Input
-                required
-                className="bg-[#0b171d] border-[#364b52] text-[#f0ece1] placeholder-[#576c67] focus-visible:border-[#c9a76c] focus-visible:ring-[#c9a76c]/30 text-sm h-10"
-                placeholder="Thám Tử Học Đường"
-                value={fullName}
-                onChange={e => setFullName(e.target.value)}
-              />
-            </div>
-          )}
-
           <div>
-            <label className="text-xs text-[#9eb0ab] font-medium block mb-1">Email</label>
+            <label className="text-xs text-[#9eb0ab] font-medium block mb-1">
+              Tên hiển thị thám tử
+            </label>
             <Input
-              type="email"
               required
               className="bg-[#0b171d] border-[#364b52] text-[#f0ece1] placeholder-[#576c67] focus-visible:border-[#c9a76c] focus-visible:ring-[#c9a76c]/30 text-sm h-10"
-              placeholder="thamtutre@erase.edu.vn hoặc email của bạn"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
+              placeholder={isLogin ? "Ví dụ: Admin 01 hoặc tên thám tử của bạn" : "Ví dụ: Thám Tử Nhí, Bảo Nam..."}
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
             />
           </div>
 
