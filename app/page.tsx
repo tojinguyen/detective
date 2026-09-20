@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import katex from 'katex';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, Backpack, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen } from 'lucide-react';
+import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { AuthModal } from '@/components/auth-modal';
 import { supabase } from '@/lib/supabase';
@@ -66,7 +66,6 @@ export default function Home() {
   const [conclusion, setConclusion] = useState('');
   const [won, setWon] = useState(false);
   const [logicHint, setLogicHint] = useState(false);
-  const [notebookOpen, setNotebookOpen] = useState(false);
   const [player, setPlayer] = useState<Point>({ x: 50, y: 57 });
   const [facing, setFacing] = useState<Direction>('front');
   const [walking, setWalking] = useState(false);
@@ -242,7 +241,7 @@ export default function Home() {
   function reset() {
     setWork(initialWork()); setEliminated([]); setActive(null); setScreen('scene');
     setBoardMessage(''); setAccused(''); setConclusion(''); setWon(false); setConclude(false); setTab('rooms'); setLogicHint(false);
-    setPlayer({ x: 50, y: 57 }); setFacing('front'); setWalking(false); setNotebookOpen(false); setWorldMessage('Chọn một căn phòng để thám tử tự di chuyển tới vật chứng.');
+    setPlayer({ x: 50, y: 57 }); setFacing('front'); setWalking(false); setWorldMessage('Chọn một căn phòng để thám tử tự di chuyển tới vật chứng.');
   }
   function showBoard() { setActive(null); setTab('board'); }
 
@@ -295,7 +294,7 @@ export default function Home() {
               <div className="surface-toolbar game-toolbar">
                 <div className="game-case-id"><span>{caseData.number}</span><div><small>VỤ ÁN</small><strong>{caseData.title}</strong></div></div>
                 <TabsList className="view-switch"><TabsTrigger value="rooms"><Gamepad2 size={16} />Khám phá</TabsTrigger><TabsTrigger value="board"><Users size={16} />Hồ sơ</TabsTrigger></TabsList>
-                <div className="hud-tools"><button onClick={() => setNotebookOpen(true)} aria-label={'Mở túi chứng cứ, hiện có ' + revealed.length + ' manh mối'}><Backpack size={18} /><span>{revealed.length}</span></button><button onClick={() => setHelp(true)} aria-label="Mở cách chơi"><HelpCircle size={18} /></button></div>
+                <div className="hud-tools"><button onClick={() => setHelp(true)} aria-label="Mở cách chơi"><HelpCircle size={18} /></button></div>
               </div>
               <TabsContent value="rooms" className="room-tab">
                 <div className="building-map game-stage">
@@ -317,7 +316,7 @@ export default function Home() {
                     <div className={'detective-player facing-' + facing + (walking ? ' is-walking' : '')} style={{ left: player.x + '%', top: player.y + '%' }} role="img" aria-label="Nhân vật thám tử tự di chuyển theo phòng người chơi chọn"><span className="detective-shadow" /><span className="detective-sprite" style={{ backgroundPosition: SPRITE_POSITIONS[facing][walking ? 'walk' : 'idle'] }} /></div>
                   </div>
                   <div className="game-console auto-console">
-                    <div className="console-status"><span><Backpack size={14} /> TÚI CHỨNG CỨ · {revealed.length}/{caseData.clues.length}</span><p role="status">{worldMessage}</p><small>Chọn phòng → nhân vật tự di chuyển → bấm Điều tra</small></div>
+                    <div className="console-status"><span><CheckCircle2 size={14} /> TIẾN ĐỘ CHỨNG CỨ · {revealed.length}/{caseData.clues.length}</span><p role="status">{worldMessage}</p><small>Chọn phòng → nhân vật tự di chuyển → bấm Điều tra</small></div>
                     <Button className={'interact-button ' + (nearbyRoom >= 0 && !walking ? 'ready' : '')} disabled={nearbyRoom < 0 || walking} onClick={enterNearbyRoom}><Search size={21} /><span><small>{walking ? 'ĐANG DI CHUYỂN' : nearbyRoom >= 0 ? 'ĐÃ TỚI CỬA' : 'CHƯA CHỌN PHÒNG'}</small>{walking ? 'Chờ thám tử tới nơi…' : nearbyRoom >= 0 ? 'Điều tra ' + caseData.rooms[nearbyRoom].name : 'Điều tra'}</span></Button>
                   </div>
                 </div>
@@ -342,12 +341,6 @@ export default function Home() {
               </TabsContent>
             </Tabs>
           </section>
-          {notebookOpen && <button className="notebook-scrim" aria-label="Đóng túi chứng cứ" onClick={() => setNotebookOpen(false)} />}
-          <aside className={'notebook notebook-overlay ' + (notebookOpen ? 'is-open' : '')} aria-label="Túi chứng cứ" aria-hidden={!notebookOpen} inert={notebookOpen ? undefined : true}>
-            <div className="notebook-header"><Backpack size={20} /><span>Túi chứng cứ</span><small>{revealed.length} / {caseData.clues.length}</small><button className="notebook-close" onClick={() => setNotebookOpen(false)} aria-label="Đóng túi chứng cứ"><X size={16} /></button></div>
-            <div className="case-brief compact-brief"><span className="paper-eyebrow">TÌNH HUỐNG</span><p className="case-summary">{caseData.story.summary}</p><div className="case-fact-icons"><span><Clock3 size={15} /><b>{caseData.discoveredAt}</b><small>Mốc phát hiện</small></span><span><Users size={15} /><b>{caseData.people.length} nhân vật</b><small>{caseData.story.groupLabel}</small></span><span><Camera size={15} /><b>{caseData.story.missingData}</b><small>Cần khôi phục</small></span></div></div>
-            <div className="clue-section"><div className="clue-section-heading"><span>DỮ KIỆN</span><small>{revealed.length} / {caseData.clues.length}</small></div><div className="clue-list">{caseData.clues.map((clue, i) => { const unlocked = revealed.includes(i); const room = caseData.rooms[i]; return <button key={i} className={'clue-card ' + (unlocked ? 'unlocked' : 'locked')} onClick={() => { setNotebookOpen(false); if (unlocked) setTab('board'); else { setTab('rooms'); approachRoom(i); } }} aria-label={unlocked ? 'Manh mối ' + (i + 1) + ': ' + clue.text : 'Đi tới ' + room.name + ' để tìm manh mối ' + (i + 1)}><span className="clue-number">{unlocked ? 'M' + (i + 1) : <LockKeyhole size={14} />}</span><span className="clue-body"><small>{unlocked ? room.source : 'CHƯA KHÁM PHÁ · PHÒNG ' + room.no}</small><span>{unlocked ? clue.text : room.final && !sideRoomsDone ? room.name + ' đang khóa' : 'Chưa có dữ liệu'}</span>{unlocked && <em className="status-good">{clue.unlockedNote}</em>}</span></button>; })}</div></div>
-          </aside>
         </div>
       </main>
 
