@@ -261,7 +261,7 @@ export default function Home() {
   return (
     <div className="game-shell">
       <header className="topbar">
-        <a className="wordmark" href="#main" aria-label="E·RASE, đến khu vực chơi"><Search size={25} /><span>E·RASE</span><i>TRUY DẤU</i></a>
+        <a className="wordmark" href="#main" aria-label="E·RASE"><Search size={25} /><span>E·RASE</span></a>
         <div className="top-actions">
           {isAdmin && (
             <>
