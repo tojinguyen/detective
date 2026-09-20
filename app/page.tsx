@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import katex from 'katex';
 import Image from 'next/image';
-import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, Backpack, CircleDot, Ruler, Package, Route, CreditCard } from 'lucide-react';
+import Link from 'next/link';
+import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, Backpack, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
+import { AuthModal } from '@/components/auth-modal';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -47,6 +51,8 @@ function CloseButton() {
 }
 
 export default function Home() {
+  const { user, profile, isAdmin, signOut } = useAuth();
+  const [authOpen, setAuthOpen] = useState(false);
   const [tab, setTab] = useState('rooms');
   const [work, setWork] = useState<Work[]>(initialWork);
   const [active, setActive] = useState<number | null>(null);
@@ -194,9 +200,42 @@ export default function Home() {
   function compare() {
     setBoardMessage(comparisonFeedback(caseData, eliminated, revealed).text);
   }
-  function submitConclusion() {
+  async function submitConclusion() {
     const result = verdict(caseData, eliminated, revealed, accused === '' ? null : Number(accused));
-    setConclusion(result.text); setWon(result.won);
+    setConclusion(result.text);
+    setWon(result.won);
+
+    // Ghi dữ liệu về Supabase
+    try {
+      const rep = investigationReport(work);
+      await supabase.from('investigation_sessions').insert({
+        user_id: user?.id ?? null,
+        user_email: user?.email ?? 'anonymous@student.local',
+        user_name: profile?.full_name ?? 'Học sinh ẩn danh',
+        case_id: caseData.id,
+        won: result.won,
+        accused_id: accused === '' ? null : Number(accused),
+        active_seconds: rep.activeSeconds,
+        inactive_seconds: rep.inactiveSeconds,
+        tab_exits: rep.tabExits,
+        records: work.map((w, i) => ({
+          question_id: questions[i].id,
+          findMisses: w.findMisses,
+          repairMisses: w.repairMisses,
+          findSeconds: w.findSeconds,
+          repairSeconds: w.repairSeconds,
+          hintOpened: w.hintOpened,
+          traceStatus: traceStatus(w),
+        })),
+        summary: {
+          immediate: rep.immediate,
+          independent: rep.independent,
+          assisted: rep.assisted,
+        }
+      });
+    } catch (e) {
+      console.error('Không thể lưu session:', e);
+    }
   }
   function reset() {
     setWork(initialWork()); setEliminated([]); setActive(null); setScreen('scene');
@@ -209,7 +248,31 @@ export default function Home() {
     <div className="game-shell">
       <header className="topbar">
         <a className="wordmark" href="#main" aria-label="E·RASE, đến khu vực chơi"><Search size={25} /><span>E·RASE</span><i>TRUY DẤU</i></a>
-        <div className="top-actions"><span className="prototype-label"><span /> BẢN CHƠI THỬ</span><Button variant="ghost" className="quiet-button restart-top" onClick={() => setRestart(true)} aria-label="Bắt đầu lại vụ án"><RotateCcw size={17} /></Button></div>
+        <div className="top-actions">
+          {isAdmin && (
+            <>
+              <Link href="/dashboard" className="quiet-button flex items-center gap-1 text-xs">
+                <LayoutDashboard size={15} /> Dashboard
+              </Link>
+              <Link href="/question-bank" className="quiet-button flex items-center gap-1 text-xs">
+                <BookOpen size={15} /> Kho đề
+              </Link>
+            </>
+          )}
+          {user ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#deb97b] font-medium">{profile?.full_name || user.email}</span>
+              <Button variant="ghost" className="quiet-button" onClick={signOut} title="Đăng xuất"><LogOut size={16} /></Button>
+            </div>
+          ) : (
+            <Button variant="ghost" className="quiet-button" onClick={() => setAuthOpen(true)}>
+              <LogIn size={16} /> Đăng nhập
+            </Button>
+          )}
+          <Button variant="ghost" className="quiet-button restart-top" onClick={() => setRestart(true)} aria-label="Bắt đầu lại vụ án">
+            <RotateCcw size={17} />
+          </Button>
+        </div>
       </header>
       <main id="main" className="workspace game-workspace">
         <div className="play-layout hud-layout">
@@ -340,6 +403,8 @@ export default function Home() {
       </Dialog>
 
       <AlertDialog open={restart} onOpenChange={setRestart}><AlertDialogContent className="paper-modal"><AlertDialogHeader><AlertDialogTitle>Bắt đầu lại vụ án?</AlertDialogTitle><AlertDialogDescription>Các phiếu đã sửa, manh mối và bảng đối chiếu trong lượt này sẽ được đặt lại.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel className="secondary-paper-button">Tiếp tục lượt này</AlertDialogCancel><AlertDialogAction className="gold-button" onClick={reset}>Bắt đầu lại</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+
+      <AuthModal open={authOpen} onOpenChange={setAuthOpen} />
     </div>
   );
 }
