@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import katex from 'katex';
 import Link from 'next/link';
-import { AlertTriangle, ArrowLeft, CheckCircle2, CopyPlus, Download, Eye, EyeOff, FileCheck2, Link2, Pencil, RotateCcw, ScanSearch, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, CopyPlus, Download, Eye, EyeOff, FileCheck2, Link2, Pencil, RotateCcw, ScanSearch, Sparkles, Trash2, Upload } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -86,6 +88,7 @@ function MathText({ value }: { value: string }) {
 }
 
 export default function QuestionBankPage() {
+  const { isAdmin, loading } = useAuth();
   const [content, setContent] = useState<LocalContent>(DEFAULT_LOCAL_CONTENT);
   const [latex, setLatex] = useState('');
   const [parsed, setParsed] = useState<ParsedQuestion[]>([]);
@@ -268,11 +271,55 @@ export default function QuestionBankPage() {
     setMessage('Đã xuất dữ liệu Kho bài tập.');
   }
 
+  function handleImportJSON(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const json = JSON.parse(e.target?.result as string);
+        if (json.customQuestions || Array.isArray(json)) {
+          const list = json.customQuestions || json;
+          const { error } = await supabase.from('questions').upsert(list);
+          if (error) throw error;
+          alert(`Đã nhập thành công ${list.length} câu hỏi vào Supabase!`);
+          window.location.reload();
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Định dạng file không hợp lệ';
+        alert('File JSON không hợp lệ: ' + msg);
+      }
+    };
+    reader.readAsText(file);
+  }
+
   const warningCount = parsed.reduce((sum, item) => sum + item.warnings.length, 0);
+
+  if (loading) return <div className="p-10 text-center text-[#e5bd7d]">Đang xác thực quyền Admin...</div>;
+
+  if (!isAdmin) {
+    return (
+      <main className="content-studio flex flex-col items-center justify-center min-h-screen text-center p-4">
+        <h1 className="text-2xl font-serif text-[#efdcb9] mb-2">Khu vực dành riêng cho Quản trị viên</h1>
+        <p className="text-sm text-[#9aaa9f] mb-6">Bạn đang đăng nhập với tư cách học sinh. Vui lòng đăng nhập tài khoản Admin để chỉnh sửa đề.</p>
+        <Link href="/" className="px-4 py-2 bg-[#bd965c] text-[#132228] font-bold rounded">Trở về Vụ án 01</Link>
+      </main>
+    );
+  }
 
   return (
     <main className="content-studio">
-      <header className="studio-topbar"><Link href="/" className="studio-back"><ArrowLeft size={18} />Trở về Vụ {CASE_01.number}</Link><div><small>E·RASE · KHU VỰC BIÊN TẬP</small><strong>Kho bài tập</strong></div><Button className="studio-export" onClick={exportContent}><Download size={16} />Xuất JSON</Button></header>
+      <header className="studio-topbar">
+        <Link href="/" className="studio-back"><ArrowLeft size={18} />Trở về Vụ {CASE_01.number}</Link>
+        <div><small>E·RASE · KHU VỰC BIÊN TẬP</small><strong>Kho bài tập</strong></div>
+        <div className="flex items-center gap-2 justify-self-end">
+          <label className="studio-export cursor-pointer flex items-center gap-1 px-3 py-2 bg-[#bd965c] text-[#132228] rounded text-xs font-bold">
+            <Upload size={16} /> Nhập JSON
+            <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
+          </label>
+          <Button className="studio-export" onClick={exportContent}><Download size={16} />Xuất JSON</Button>
+        </div>
+      </header>
 
       <section className="studio-intro latex-studio-intro"><div><span className="studio-kicker"><Sparkles size={15} /> NHẬP TRỰC TIẾP TỪ KHO LATEX</span><h1>Dán một lần, tạo cả bộ câu hỏi.</h1><p>Giữ nguyên cấu trúc kho đề. Hệ thống tự phân biệt chọn dấu, chọn phép biến đổi, nhập giá trị và viết lại bước tính.</p></div><div className="studio-stats"><span><b>{bank.length}</b><small>Bài trong kho</small></span><span><b>{assignedQuestionIds.length}/{CASE_01.rooms.length}</b><small>Phòng đã gán</small></span><span><b>{content.customQuestions.length}</b><small>Bài đã nhập</small></span></div></section>
 
