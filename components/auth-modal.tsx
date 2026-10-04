@@ -190,7 +190,7 @@ export function AuthModal({
         </div>
 
         {errorMsg && (
-          <p className="bg-[#451e18]/50 border border-[#8a3e30] text-xs text-[#f49f90] p-2.5 rounded flex items-center gap-1.5">
+          <p className="bg-[#241e1d] border border-[#6b4742] text-xs text-[#deb3ab] p-2.5 rounded flex items-center gap-1.5">
             <AlertCircle size={15} /> {errorMsg}
           </p>
         )}

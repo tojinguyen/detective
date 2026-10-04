@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
-import { Users, Clock, AlertTriangle, CheckCircle2, Search, Download, ArrowLeft, Eye } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CheckCircle2, Search, Download, ArrowLeft, Eye, Award, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface SessionRecord {
@@ -13,6 +13,7 @@ interface SessionRecord {
   repairMisses: number;
   findSeconds: number;
   repairSeconds: number;
+  roomSeconds?: number;
   hintOpened: boolean;
   traceStatus: string;
 }
@@ -29,9 +30,21 @@ interface InvestigationSession {
   created_at: string;
   records?: SessionRecord[];
   summary?: {
-    immediate: number;
-    independent: number;
-    assisted: number;
+    immediate?: number;
+    independent?: number;
+    assisted?: number;
+    board_seconds?: number;
+    room_times?: number[];
+    score?: number;
+    rank?: string;
+    conclusion_attempts?: number;
+    score_breakdown?: {
+      roomsTotal?: number;
+      totalScore?: number;
+      conclusion?: { total?: number };
+    };
+    completed_cases_count?: number;
+    career_score?: number;
   };
 }
 
@@ -63,18 +76,34 @@ export default function AdminDashboardPage() {
     : 0;
 
   function fmt(s: number) {
-    const m = Math.floor((s || 0) / 60);
-    const sec = (s || 0) % 60;
+    const safe = Math.max(0, Math.floor(s || 0));
+    const m = Math.floor(safe / 60);
+    const sec = safe % 60;
     return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   }
 
   function exportCSV() {
-    const header = ['Học sinh', 'Thời gian làm', 'Rời tab (lần)', 'Treo máy', 'Kết quả', 'Ngày giờ'];
+    const header = [
+      'Học sinh',
+      'Điểm vụ án',
+      'Cấp bậc',
+      'Thời gian phá án',
+      'Thời gian xem hồ sơ',
+      'Rời tab (lần)',
+      'Treo máy / Ẩn tab',
+      'Số lần kết luận',
+      'Kết quả',
+      'Ngày giờ'
+    ];
     const rows = filtered.map(s => [
       `"${s.user_name || ''}"`,
+      s.summary?.score !== undefined ? s.summary.score : '',
+      `"${s.summary?.rank || ''}"`,
       fmt(s.active_seconds),
+      fmt(s.summary?.board_seconds || 0),
       s.tab_exits || 0,
       fmt(s.inactive_seconds),
+      s.summary?.conclusion_attempts || 1,
       s.won ? 'Thành công' : 'Chưa đúng',
       new Date(s.created_at).toLocaleString('vi-VN')
     ]);
@@ -149,7 +178,10 @@ export default function AdminDashboardPage() {
             <tr>
               <th className="p-3">Học sinh</th>
               <th className="p-3">Kết quả</th>
-              <th className="p-3">Thời gian làm</th>
+              <th className="p-3">Điểm</th>
+              <th className="p-3">Cấp bậc</th>
+              <th className="p-3">Thời gian phá án</th>
+              <th className="p-3">Xem hồ sơ</th>
               <th className="p-3">Rời tab</th>
               <th className="p-3">Ngày làm</th>
               <th className="p-3 text-right">Chi tiết</th>
@@ -160,7 +192,18 @@ export default function AdminDashboardPage() {
               <tr key={s.id} className="hover:bg-[#1f313a] transition-colors">
                 <td className="p-3 font-semibold text-[#f1ecdf]">{s.user_name}</td>
                 <td className="p-3">{s.won ? <span className="text-[#7e9473] font-bold">✓ Phá án thành công</span> : <span className="text-[#d3765e]">✕ Sai/Chưa xong</span>}</td>
+                <td className="p-3 font-bold text-[#deb97b]">
+                  {s.summary?.score !== undefined ? `${s.summary.score}/100` : '--'}
+                </td>
+                <td className="p-3 text-[#d2baa3]">
+                  {s.summary?.rank ? (
+                    <span className="px-2 py-0.5 bg-[#253840] border border-[#405660] rounded text-[11px] font-medium text-[#ffd78a]">
+                      {s.summary.rank}
+                    </span>
+                  ) : '--'}
+                </td>
                 <td className="p-3 font-mono text-[#ceac79]">{fmt(s.active_seconds)}</td>
+                <td className="p-3 font-mono text-[#9bb0a5]">{fmt(s.summary?.board_seconds || 0)}</td>
                 <td className="p-3">{s.tab_exits > 0 ? <span className="text-[#d3765e] font-semibold">{s.tab_exits} lần ({fmt(s.inactive_seconds)})</span> : <span className="text-[#7e9473]">Tập trung</span>}</td>
                 <td className="p-3 text-[#879896]">{new Date(s.created_at).toLocaleString('vi-VN')}</td>
                 <td className="p-3 text-right">
@@ -175,21 +218,69 @@ export default function AdminDashboardPage() {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="paper-modal max-w-lg w-full bg-[#132229] border border-[#ceac79] p-5 rounded-lg text-xs">
-            <h3 className="text-base font-serif text-[#f1ecdf] font-bold mb-1">Chi tiết: {selected.user_name}</h3>
-            <p className="text-[#879896] mb-4">Vụ án: {selected.case_id}</p>
-            <div className="space-y-2 mb-4">
-              {selected.records?.map((r: SessionRecord, idx: number) => (
-                <div key={idx} className="p-2.5 bg-[#0e1c22] border border-[#34474e] rounded flex justify-between">
-                  <div>
-                    <strong className="text-[#deb97b]">Phòng {idx + 1} (Bài {r.question_id})</strong>
-                    <div className="text-[#879896] text-[11px] mt-0.5">Tìm sai: {r.findMisses} lần ({fmt(r.findSeconds)}) · Sửa sai: {r.repairMisses} lần ({fmt(r.repairSeconds)})</div>
-                  </div>
-                  <span className="text-[10px] self-center px-1.5 py-0.5 bg-[#263b42] rounded text-[#baa785]">{r.hintOpened ? 'Có gợi ý' : r.traceStatus}</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div className="max-w-lg w-full bg-[#132229] border border-[#ceac79] p-5 rounded-lg text-xs max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-start justify-between border-b border-[#354850] pb-3 mb-3">
+              <div>
+                <h3 className="text-base font-serif text-[#f1ecdf] font-bold mb-0.5">Chi tiết: {selected.user_name}</h3>
+                <p className="text-[#879896]">Vụ án: {selected.case_id} · {new Date(selected.created_at).toLocaleString('vi-VN')}</p>
+              </div>
+              {selected.summary?.rank && (
+                <div className="text-right">
+                  <span className="text-[10px] text-[#8fa298] block">CẤP BẬC</span>
+                  <strong className="text-[#ffd78a] text-xs">{selected.summary.rank}</strong>
                 </div>
-              ))}
+              )}
             </div>
+
+            {/* Khối thống kê tổng quan của lượt chơi */}
+            <div className="grid grid-cols-3 gap-2 bg-[#0c1a20] p-3 rounded border border-[#2b3e46] mb-4 text-center">
+              <div>
+                <span className="text-[10px] text-[#869892] block">Điểm vụ án</span>
+                <strong className="text-sm font-bold text-[#deb97b]">
+                  {selected.summary?.score !== undefined ? `${selected.summary.score}/100` : '--'}
+                </strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-[#869892] block">Thời gian phá án</span>
+                <strong className="text-sm font-mono text-[#f1ecdf]">{fmt(selected.active_seconds)}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-[#869892] block">Thời gian xem hồ sơ</span>
+                <strong className="text-sm font-mono text-[#9bb0a5]">{fmt(selected.summary?.board_seconds || 0)}</strong>
+              </div>
+            </div>
+
+            {/* Chi tiết từng phòng */}
+            <p className="text-[11px] font-bold text-[#baa785] uppercase tracking-wider mb-2">Tiến trình từng phòng:</p>
+            <div className="space-y-2 mb-4">
+              {selected.records?.map((r: SessionRecord, idx: number) => {
+                const roomTime = selected.summary?.room_times?.[idx] ?? r.roomSeconds ?? (r.findSeconds + r.repairSeconds);
+                return (
+                  <div key={idx} className="p-2.5 bg-[#0e1c22] border border-[#34474e] rounded flex justify-between items-center">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <strong className="text-[#deb97b]">Phòng {idx + 1} (Bài {r.question_id})</strong>
+                        <span className="text-[10px] text-[#82998f] font-mono">⏱ {fmt(roomTime)}</span>
+                      </div>
+                      <div className="text-[#879896] text-[11px] mt-0.5">
+                        Tìm sai: {r.findMisses} lần ({fmt(r.findSeconds)}) · Sửa sai: {r.repairMisses} lần ({fmt(r.repairSeconds)})
+                      </div>
+                    </div>
+                    <span className="text-[10px] self-center px-2 py-0.5 bg-[#263b42] rounded text-[#baa785] border border-[#3a5059]">
+                      {r.hintOpened ? 'Đã dùng gợi ý' : 'Không dùng gợi ý'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Thống kê rời tab & kết luận */}
+            <div className="p-2.5 bg-[#17272f] border border-[#2b3e46] rounded text-[11px] text-[#a4b5ac] mb-4 space-y-1">
+              <div>• <strong>Số lần gửi kết luận:</strong> {selected.summary?.conclusion_attempts || 1} lần</div>
+              <div>• <strong>Tập trung:</strong> {selected.tab_exits > 0 ? `Rời tab ${selected.tab_exits} lần (khoảng ${fmt(selected.inactive_seconds)})` : 'Hoàn toàn tập trung, không rời tab'}</div>
+            </div>
+
             <Button onClick={() => setSelected(null)} className="gold-button w-full justify-center">Đóng</Button>
           </div>
         </div>

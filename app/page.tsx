@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import katex from 'katex';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen } from 'lucide-react';
+import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen, Trophy, Award, Play } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { AuthModal } from '@/components/auth-modal';
 import { supabase } from '@/lib/supabase';
@@ -20,6 +20,7 @@ import { CASE_01, type Direction } from '@/lib/cases';
 import { defaultQuestionsForCase, questionsForCase, readLocalContent, type Question } from '@/lib/content';
 import { tokeniseMath } from '@/lib/latex-question-parser';
 import { formatInvestigationTime, investigationReport, traceStatus, TRACE_STATUS_LABELS, type InvestigationRecord } from '@/lib/investigation-report';
+import { evaluateRank, type DetectiveRank, type CaseScoreBreakdown } from '@/lib/scoring';
 
 type Work = InvestigationRecord & { selection: string | null; answer: string; message: string };
 type Point = { x: number; y: number };
@@ -71,8 +72,25 @@ export default function Home() {
   const [walking, setWalking] = useState(false);
   const [questions, setQuestions] = useState<Question[]>(() => defaultQuestionsForCase(caseData));
   const [worldMessage, setWorldMessage] = useState('Chọn một căn phòng để thám tử tự di chuyển tới vật chứng.');
+
+  // Timing và Scoring states
+  const [isStarted, setIsStarted] = useState(false);
+  const [totalSeconds, setTotalSeconds] = useState(0);
+  const [boardSeconds, setBoardSeconds] = useState(0);
+  const [roomTimes, setRoomTimes] = useState<number[]>(() => caseData.rooms.map(() => 0));
+  const [tabExits, setTabExits] = useState(0);
+  const [inactiveSeconds, setInactiveSeconds] = useState(0);
+  const [conclusionAttempts, setConclusionAttempts] = useState(0);
+  const [rankResult, setRankResult] = useState<{
+    completedCasesCount: number;
+    totalCareerScore: number;
+    rank: DetectiveRank;
+    scoreBreakdown: CaseScoreBreakdown;
+  } | null>(null);
+
   const movementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hiddenSession = useRef<{ startedAt: number; question: number } | null>(null);
+  const hiddenTimestamp = useRef<number | null>(null);
+
   const revealed = work.flatMap((w, i) => w.stage === 'done' ? [i] : []);
   const sideRoomsDone = caseData.rooms.every((room, index) => room.final || work[index].stage === 'done');
   const allEvidenceDone = work.every(w => w.stage === 'done');
@@ -84,20 +102,72 @@ export default function Home() {
   const logicHintText = caseData.logicHints[Math.min(latestClue, caseData.logicHints.length - 1)];
   const sideRoomCount = caseData.rooms.filter(room => !room.final).length;
   const preFinalCandidates = candidates(caseData, caseData.clues.map((_, index) => index).filter(index => index !== caseData.finalRoomIndex)).length;
-  const report = investigationReport(work);
-  const timingContext = useRef({ active, screen, stage: current?.stage });
+
+  const report = investigationReport(work, {
+    totalInvestigationSeconds: totalSeconds,
+    boardSeconds,
+    conclusionAttempts: conclusionAttempts + (won ? 0 : 1),
+    won,
+  });
+
+  const startInvestigation = useCallback(() => {
+    setIsStarted(true);
+    setWorldMessage('Cuộc điều tra đã bắt đầu! Hãy chọn một căn phòng để thám tử di chuyển tới.');
+  }, []);
+
+  // Khôi phục tiến trình từ localStorage khi tải trang
   useEffect(() => {
-    timingContext.current = { active, screen, stage: current?.stage };
-  }, [active, screen, current?.stage]);
+    const saveKey = `erase_progress_${caseData.id}_${user?.id || 'guest'}`;
+    try {
+      const saved = localStorage.getItem(saveKey);
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.isStarted && !data.won) {
+          setIsStarted(true);
+          setTotalSeconds(data.totalSeconds || 0);
+          setBoardSeconds(data.boardSeconds || 0);
+          setRoomTimes(Array.isArray(data.roomTimes) ? data.roomTimes : caseData.rooms.map(() => 0));
+          setTabExits(data.tabExits || 0);
+          setInactiveSeconds(data.inactiveSeconds || 0);
+          if (Array.isArray(data.work)) setWork(data.work);
+          if (Array.isArray(data.eliminated)) setEliminated(data.eliminated);
+          if (typeof data.conclusionAttempts === 'number') setConclusionAttempts(data.conclusionAttempts);
+        }
+      }
+    } catch {}
+  }, [user?.id]);
+
+  // Lưu tiến trình vào localStorage khi có thay đổi
+  useEffect(() => {
+    if (!isStarted) return;
+    const saveKey = `erase_progress_${caseData.id}_${user?.id || 'guest'}`;
+    const payload = {
+      isStarted,
+      totalSeconds,
+      boardSeconds,
+      roomTimes,
+      tabExits,
+      inactiveSeconds,
+      work,
+      eliminated,
+      conclusionAttempts,
+      won,
+      updatedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(saveKey, JSON.stringify(payload));
+    } catch {}
+  }, [isStarted, totalSeconds, boardSeconds, roomTimes, tabExits, inactiveSeconds, work, eliminated, conclusionAttempts, won, user?.id]);
 
   const openRoom = useCallback((index: number) => {
+    if (!isStarted) setIsStarted(true);
     if (caseData.rooms[index].final && !sideRoomsDone) {
       setWorldMessage(caseData.rooms[index].name + ' còn khóa. Hãy thu thập đủ chứng cứ ở các phòng trước.');
       return;
     }
     setActive(index);
     setScreen('scene');
-  }, [sideRoomsDone]);
+  }, [sideRoomsDone, isStarted]);
 
   const enterNearbyRoom = useCallback(() => {
     if (nearbyRoom < 0) {
@@ -108,6 +178,7 @@ export default function Home() {
   }, [nearbyRoom, openRoom]);
 
   function approachRoom(index: number) {
+    if (!isStarted) setIsStarted(true);
     const room = caseData.rooms[index];
     if (room.final && !sideRoomsDone) {
       setWorldMessage('Cửa ' + room.no + ' đang khóa. Các đèn chứng cứ trước đó phải sáng.');
@@ -125,44 +196,72 @@ export default function Home() {
   }
 
   useEffect(() => () => { if (movementTimer.current) clearTimeout(movementTimer.current); }, []);
+
+  // Bộ đếm giờ điều tra toàn bộ quá trình: di chuyển, phòng, hồ sơ, kết luận
   useEffect(() => {
-    if (active === null || screen !== 'question' || current?.stage === 'done') return;
+    if (!isStarted || won) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
-      setWork(old => old.map((record, index) => {
-        if (index !== active || record.stage === 'done') return record;
-        return record.stage === 'detect'
-          ? { ...record, findSeconds: record.findSeconds + 1 }
-          : { ...record, repairSeconds: record.repairSeconds + 1 };
-      }));
+      setTotalSeconds(s => s + 1);
+
+      if (active !== null) {
+        setRoomTimes(prev => {
+          const next = [...prev];
+          next[active] = (next[active] || 0) + 1;
+          return next;
+        });
+        setWork(old => old.map((record, index) => {
+          if (index !== active) return record;
+          return {
+            ...record,
+            roomSeconds: (record.roomSeconds || 0) + 1,
+            findSeconds: (screen === 'question' && record.stage === 'detect') ? record.findSeconds + 1 : record.findSeconds,
+            repairSeconds: (screen === 'question' && record.stage === 'repair') ? record.repairSeconds + 1 : record.repairSeconds,
+          };
+        }));
+      } else if (tab === 'board') {
+        setBoardSeconds(s => s + 1);
+      }
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [active, screen, current?.stage]);
+  }, [isStarted, won, active, screen, tab]);
+
+  // Tạm dừng khi rời tab và ghi nhận số lần rời tab
   useEffect(() => {
     function trackVisibility() {
+      if (!isStarted || won) return;
       if (document.visibilityState === 'hidden') {
-        const context = timingContext.current;
-        if (context.active !== null && context.screen === 'question' && context.stage !== 'done') {
-          hiddenSession.current = { startedAt: Date.now(), question: context.active };
-        }
+        hiddenTimestamp.current = Date.now();
         return;
       }
-      const session = hiddenSession.current;
-      hiddenSession.current = null;
-      if (!session) return;
-      const elapsed = Math.floor((Date.now() - session.startedAt) / 1000);
-      if (elapsed < 2) return;
-      setWork(old => old.map((record, index) => index === session.question
-        ? { ...record, tabExits: record.tabExits + 1, inactiveSeconds: record.inactiveSeconds + elapsed }
-        : record));
+      if (hiddenTimestamp.current) {
+        const elapsed = Math.floor((Date.now() - hiddenTimestamp.current) / 1000);
+        hiddenTimestamp.current = null;
+        if (elapsed >= 1) {
+          setTabExits(n => n + 1);
+          setInactiveSeconds(s => s + elapsed);
+          setWork(old => old.map((record, index) => {
+            if (index === active) {
+              return {
+                ...record,
+                tabExits: record.tabExits + 1,
+                inactiveSeconds: record.inactiveSeconds + elapsed,
+              };
+            }
+            return record;
+          }));
+        }
+      }
     }
     document.addEventListener('visibilitychange', trackVisibility);
     return () => document.removeEventListener('visibilitychange', trackVisibility);
-  }, []);
+  }, [isStarted, won, active]);
+
   useEffect(() => {
     const frame = requestAnimationFrame(() => setQuestions(questionsForCase(readLocalContent(), caseData)));
     return () => cancelAnimationFrame(frame);
   }, []);
+
 
   function updateWork(patch: Partial<Work>) {
     if (active === null) return;
@@ -202,46 +301,120 @@ export default function Home() {
     setBoardMessage(comparisonFeedback(caseData, eliminated, revealed).text);
   }
   async function submitConclusion() {
+    const attempts = conclusionAttempts + 1;
+    setConclusionAttempts(attempts);
     const result = verdict(caseData, eliminated, revealed, accused === '' ? null : Number(accused));
     setConclusion(result.text);
     setWon(result.won);
 
-    // Ghi dữ liệu về Supabase
-    try {
-      const rep = investigationReport(work);
-      await supabase.from('investigation_sessions').insert({
-        user_id: user?.id ?? null,
-        user_name: profile?.full_name ?? 'Học sinh ẩn danh',
-        case_id: caseData.id,
-        won: result.won,
-        accused_id: accused === '' ? null : Number(accused),
-        active_seconds: rep.activeSeconds,
-        inactive_seconds: rep.inactiveSeconds,
-        tab_exits: rep.tabExits,
-        records: work.map((w, i) => ({
-          question_id: questions[i].id,
-          findMisses: w.findMisses,
-          repairMisses: w.repairMisses,
-          findSeconds: w.findSeconds,
-          repairSeconds: w.repairSeconds,
-          hintOpened: w.hintOpened,
-          traceStatus: traceStatus(w),
-        })),
-        summary: {
-          immediate: rep.immediate,
-          independent: rep.independent,
-          assisted: rep.assisted,
-        }
+    if (result.won) {
+      const rep = investigationReport(work, {
+        totalInvestigationSeconds: totalSeconds,
+        boardSeconds,
+        conclusionAttempts: attempts,
+        won: true,
       });
-    } catch (e) {
-      console.error('Không thể lưu session:', e);
+
+      // Xử lý Rank & Điểm sự nghiệp tích lũy qua các vụ án
+      let completedCasesCount = 1;
+      let totalCareerScore = rep.scoreBreakdown.totalScore;
+
+      try {
+        const historyKey = `erase_career_${user?.id || 'guest'}`;
+        const prevHistoryRaw = localStorage.getItem(historyKey);
+        let careerHistory: Record<string, number> = {};
+        if (prevHistoryRaw) {
+          try {
+            careerHistory = JSON.parse(prevHistoryRaw);
+          } catch {}
+        }
+        // Lưu điểm tốt nhất của vụ án này
+        careerHistory[caseData.id] = Math.max(careerHistory[caseData.id] || 0, rep.scoreBreakdown.totalScore);
+        localStorage.setItem(historyKey, JSON.stringify(careerHistory));
+
+        completedCasesCount = Object.keys(careerHistory).length;
+        totalCareerScore = Object.values(careerHistory).reduce((a, b) => a + b, 0);
+      } catch (err) {
+        console.warn('Lỗi xử lý rank history:', err);
+      }
+
+      const evaluated = evaluateRank(completedCasesCount, totalCareerScore);
+      setRankResult({
+        completedCasesCount,
+        totalCareerScore,
+        rank: evaluated.rank,
+        scoreBreakdown: rep.scoreBreakdown,
+      });
+
+      // Ghi dữ liệu về Supabase
+      try {
+        await supabase.from('investigation_sessions').insert({
+          user_id: user?.id ?? null,
+          user_name: profile?.full_name ?? 'Học sinh ẩn danh',
+          case_id: caseData.id,
+          won: true,
+          accused_id: accused === '' ? null : Number(accused),
+          active_seconds: totalSeconds,
+          inactive_seconds: inactiveSeconds,
+          tab_exits: tabExits,
+          records: work.map((w, i) => ({
+            question_id: questions[i].id,
+            findMisses: w.findMisses,
+            repairMisses: w.repairMisses,
+            findSeconds: w.findSeconds,
+            repairSeconds: w.repairSeconds,
+            roomSeconds: roomTimes[i] || (w.findSeconds + w.repairSeconds),
+            hintOpened: w.hintOpened,
+            traceStatus: traceStatus(w),
+          })),
+          summary: {
+            immediate: rep.immediate,
+            independent: rep.independent,
+            assisted: rep.assisted,
+            board_seconds: boardSeconds,
+            room_times: roomTimes,
+            score: rep.scoreBreakdown.totalScore,
+            score_breakdown: rep.scoreBreakdown,
+            rank: evaluated.rank,
+            conclusion_attempts: attempts,
+            completed_cases_count: completedCasesCount,
+            career_score: totalCareerScore,
+          }
+        });
+      } catch (e) {
+        console.error('Không thể lưu session:', e);
+      }
     }
   }
+
   function reset() {
-    setWork(initialWork()); setEliminated([]); setActive(null); setScreen('scene');
-    setBoardMessage(''); setAccused(''); setConclusion(''); setWon(false); setConclude(false); setTab('rooms'); setLogicHint(false);
-    setPlayer({ x: 50, y: 57 }); setFacing('front'); setWalking(false); setWorldMessage('Chọn một căn phòng để thám tử tự di chuyển tới vật chứng.');
+    const saveKey = `erase_progress_${caseData.id}_${user?.id || 'guest'}`;
+    try { localStorage.removeItem(saveKey); } catch {}
+    setIsStarted(false);
+    setTotalSeconds(0);
+    setBoardSeconds(0);
+    setRoomTimes(caseData.rooms.map(() => 0));
+    setTabExits(0);
+    setInactiveSeconds(0);
+    setConclusionAttempts(0);
+    setRankResult(null);
+    setWork(initialWork());
+    setEliminated([]);
+    setActive(null);
+    setScreen('scene');
+    setBoardMessage('');
+    setAccused('');
+    setConclusion('');
+    setWon(false);
+    setConclude(false);
+    setTab('rooms');
+    setLogicHint(false);
+    setPlayer({ x: 50, y: 57 });
+    setFacing('front');
+    setWalking(false);
+    setWorldMessage('Chọn một căn phòng để thám tử tự di chuyển tới vật chứng.');
   }
+
   function showBoard() { setActive(null); setTab('board'); }
 
   if (loading) {
@@ -297,7 +470,22 @@ export default function Home() {
               </div>
               <TabsContent value="rooms" className="room-tab">
                 <div className="building-map game-stage">
-                  <div className="world-hud"><span className="case-clock" title="Mốc thời gian vụ việc, không phải đồng hồ đếm ngược"><Clock3 size={13} />MỐC {caseData.discoveredAt}</span><span><CircleDot size={13} /> MỤC TIÊU</span><p>{allEvidenceDone ? caseData.objective.conclusion : sideRoomsDone ? caseData.objective.finalRoom : caseData.objective.initial}</p><div className="evidence-lights" aria-label={revealed.length + ' trên ' + caseData.clues.length + ' đèn dữ kiện đã sáng'}>{caseData.clues.map((_, i) => <i key={i} className={revealed.includes(i) ? 'lit' : ''} />)}</div></div>
+                  <div className="world-hud">
+                    {!isStarted ? (
+                      <button className="start-investigation-badge" onClick={startInvestigation} title="Bắt đầu tính giờ và phá án">
+                        <Play size={13} fill="currentColor" /> BẮT ĐẦU ĐIỀU TRA
+                      </button>
+                    ) : (
+                      <span className="investigation-hud-timer" title="Thời gian điều tra">
+                        <Clock3 size={13} /> THỜI GIAN ĐIỀU TRA: <b>{formatInvestigationTime(totalSeconds)}</b>
+                      </span>
+                    )}
+                    <span><CircleDot size={13} /> MỤC TIÊU</span>
+                    <p>{allEvidenceDone ? caseData.objective.conclusion : sideRoomsDone ? caseData.objective.finalRoom : caseData.objective.initial}</p>
+                    <div className="evidence-lights" aria-label={revealed.length + ' trên ' + caseData.clues.length + ' đèn dữ kiện đã sáng'}>
+                      {caseData.clues.map((_, i) => <i key={i} className={revealed.includes(i) ? 'lit' : ''} />)}
+                    </div>
+                  </div>
                   <div className="floor-plan game-world" aria-label="Khu điều tra; chọn một căn phòng để thám tử tự di chuyển">
                     <div className="world-floor-lines" />
                     <div className="hud-anchor-marker suspect-counter" title={'Danh sách có ' + caseData.people.length + ' nhân vật'}><Users size={17} /><span>{caseData.people.length} NHÂN VẬT</span></div>
@@ -353,12 +541,12 @@ export default function Home() {
               <span className="room-scene-number">PHÒNG {caseData.rooms[active].no}</span>
               <button className={'room-object-hotspot ' + (current.stage === 'done' ? 'found' : '')} onClick={() => setScreen('question')}><span>{current.stage === 'done' ? <Check size={19} /> : <Search size={19} />}</span><strong>{caseData.rooms[active].object}</strong><small>{current.stage === 'done' ? 'Xem chứng cứ đã thu thập' : 'Kiểm tra vật chứng'}</small></button>
             </div>
-            <div className="room-object-card"><span className="paper-eyebrow">{caseData.rooms[active].final ? 'CHẶNG CUỐI' : 'KHU VỰC ĐIỀU TRA'}</span><h2>{caseData.rooms[active].name}</h2><p>{caseData.rooms[active].note}</p>{caseData.rooms[active].securityWarning && <div className="security-warning"><Camera size={17} /><span>{caseData.rooms[active].securityWarning}</span></div>}<div><Button className="gold-button" onClick={() => setScreen('question')}>{current.stage === 'done' ? 'Xem chứng cứ' : 'Kiểm tra vật chứng'}<ArrowRight size={16} /></Button><Button variant="ghost" className="quiet-paper-button" onClick={() => setActive(null)}>Quay lại sơ đồ tòa nhà</Button></div></div>
+            <div className="room-object-card"><span className="paper-eyebrow">{caseData.rooms[active].final ? 'CHẶNG CUỐI' : 'KHU VỰC ĐIỀU TRA'}</span><h2>{caseData.rooms[active].name}</h2><p>{caseData.rooms[active].note}</p>{caseData.rooms[active].securityWarning && <div className="security-warning"><Camera size={17} /><span>{caseData.rooms[active].securityWarning}</span></div>}<div><Button className="gold-button" onClick={() => setScreen('question')}>{current.stage === 'done' ? 'Xem chứng cứ' : 'Kiểm tra vật chứng'}<ArrowRight size={16} /></Button></div></div>
           </div>}
           {active !== null && current && question && screen === 'question' && <>
             <DialogHeader className="question-heading"><div className="modal-eyebrow"><FileSearch size={22} /><span>{caseData.rooms[active].source} <i>·</i> BÀI {question.id}</span></div><DialogTitle>{current.stage === 'done' ? 'Chứng cứ đã được mở khóa.' : 'Có gì chưa đúng ở đây?'}</DialogTitle><DialogDescription>{current.stage === 'done' ? 'Phiếu Toán đã sửa giúp bạn đọc được mảnh thông tin của căn phòng này.' : 'Vật chứng bị khóa bởi một lời giải sai. Tìm lỗi đầu tiên, rồi sửa đúng để mở.'}</DialogDescription></DialogHeader>
             {current.stage !== 'done' ? <>
-              <div className="question-progress-row"><div className="math-stages"><span className={current.stage === 'detect' ? 'active' : 'finished'}>{current.stage === 'repair' ? <Check size={13} /> : <b>1</b>} Tìm lỗi</span><span className="stage-line" /><span className={current.stage === 'repair' ? 'active' : ''}><b>2</b> Sửa lỗi</span><span className="stage-line" /><span><LockKeyhole size={13} /> Manh mối</span></div><span className="investigation-timer" aria-label={'Thời gian điều tra ' + formatInvestigationTime(current.findSeconds + current.repairSeconds)}><Clock3 size={14} /><small>THỜI GIAN ĐIỀU TRA</small><b>{formatInvestigationTime(current.findSeconds + current.repairSeconds)}</b></span></div>
+              <div className="question-progress-row"><div className="math-stages"><span className={current.stage === 'detect' ? 'active' : 'finished'}>{current.stage === 'repair' ? <Check size={13} /> : <b>1</b>} Tìm lỗi</span><span className="stage-line" /><span className={current.stage === 'repair' ? 'active' : ''}><b>2</b> Sửa lỗi</span><span className="stage-line" /><span><LockKeyhole size={13} /> Manh mối</span></div><span className="investigation-timer" aria-label={'Thời gian điều tra ' + formatInvestigationTime(totalSeconds)}><Clock3 size={14} /><small>THỜI GIAN ĐIỀU TRA</small><b>{formatInvestigationTime(totalSeconds)}</b></span></div>
               <div className={'worksheet ' + (fullSearch ? 'scan-mode' : '')}><div className="worksheet-caption"><span>BÀI CÓ LỖI</span><span>{!fullSearch && question.givenLine ? 'Lỗi bắt đầu ở dòng ' + question.givenLine : 'Truy tìm lỗi sai đầu tiên'}</span></div><div className="equations">{question.bad.map((line, r) => { const errorRow = question.errorLine ?? 1; const tokens = fullSearch ? (r === errorRow ? question.segments : tokeniseMath(line)) : r === errorRow ? question.segments : null; const interactive = current.stage === 'detect' && tokens !== null; return <div className={'equation-row ' + (!fullSearch && r === errorRow && question.givenLine ? 'given-line' : '')} key={r}><span className="line-number">{r + 1}</span><div className="equation-content">{tokens ? <>{line.trim().startsWith('=') && tokens[0] !== '=' && <MathText value="=" />}{tokens.map((token, t) => interactive ? <button className={'math-token ' + (current.selection === r + '-' + t ? 'chosen' : '')} key={t} aria-pressed={current.selection === r + '-' + t} aria-label={'Dòng ' + (r + 1) + ', phần ' + (t + 1) + ': ' + token} onClick={() => updateWork({ selection: r + '-' + t, message: '' })}><MathText value={token} /></button> : <span className={'math-token fixed ' + (current.selection === r + '-' + t ? 'chosen' : '')} key={t}><MathText value={token} /></span>)}</> : <MathText value={line} />}</div></div>; })}</div></div>
               {current.stage === 'detect' ? <div className="question-action"><p>{fullSearch ? 'Tìm xem lời giải bắt đầu sai từ đâu, rồi sửa lại từ đó.' : 'Chọn số, dấu hoặc phần biến đổi sai trên dòng ' + (question.givenLine ?? (question.errorLine ?? 1) + 1) + '.'}</p><Button className="gold-button" onClick={detect}>Kiểm tra vị trí<ArrowRight size={16} /></Button></div> : <form className="repair-form" onSubmit={e => { e.preventDefault(); repair(); }}><label className="repair-label" htmlFor="repair-answer">{question.repairLabel}</label>{question.kind === 'symbol' ? <RadioGroup className="symbol-choices" value={current.answer} onValueChange={value => updateWork({ answer: value, message: '' })} aria-label="Chọn dấu thay thế">{[{ v: '+', label: '+', name: 'Cộng' }, { v: '-', label: '−', name: 'Trừ' }, { v: '*', label: '×', name: 'Nhân' }, { v: '/', label: ':', name: 'Chia' }].map(symbol => <label className={'symbol-choice ' + (current.answer === symbol.v ? 'selected' : '')} key={symbol.v}><RadioGroupItem value={symbol.v} id={'symbol-' + symbol.v} aria-label={symbol.name} /><span>{symbol.label}</span></label>)}</RadioGroup> : question.kind === 'choice' && question.options?.length ? <RadioGroup className="expression-choices" value={current.answer} onValueChange={value => updateWork({ answer: value, message: '' })} aria-label="Chọn phép biến đổi đúng">{question.options.map(option => <label className={'expression-choice ' + (current.answer === option.key ? 'selected' : '')} key={option.key}><RadioGroupItem value={option.key} id={'choice-' + option.key} /><b>{option.key}</b><MathText value={option.value} /></label>)}</RadioGroup> : <><Input id="repair-answer" className="math-input" value={current.answer} onChange={e => updateWork({ answer: e.target.value, message: '' })} autoComplete="off" maxLength={100} placeholder={question.kind === 'value' ? 'Nhập giá trị đúng…' : 'Nhập bước tính đúng…'} /><small className="input-help">{question.kind === 'expression' ? 'Dùng +, −, *, : và ngoặc. Chấp nhận các cách tính tương đương.' : 'Bạn có thể nhập số hoặc một biểu thức có cùng giá trị.'}</small></>}<Button type="submit" className="gold-button">Xác nhận cách sửa<Check size={16} /></Button></form>}
               {current.message && <p className={'math-feedback ' + (current.stage === 'repair' && current.repairMisses === 0 ? 'encourage' : '')} role="status">{current.message}</p>}
@@ -368,7 +556,7 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={help} onOpenChange={setHelp}><DialogContent className="paper-modal help-modal" showCloseButton={false}><CloseButton /><DialogHeader><p className="paper-eyebrow">SỔ TAY THÁM TỬ</p><DialogTitle>Tự mình bước vào hiện trường.</DialogTitle><DialogDescription>Chọn từng căn phòng để thám tử tự di chuyển tới cửa và trực tiếp mở dữ kiện.</DialogDescription></DialogHeader><div className="help-steps"><div><b>01</b><p><strong>Chọn căn phòng</strong>Bấm vào một căn phòng; thám tử sẽ tự đi tới cửa.</p></div><div><b>02</b><p><strong>Bấm Điều tra</strong>Khi thám tử đến nơi, bấm nút Điều tra. Tìm lỗi đầu tiên rồi sửa phiếu Toán.</p></div><div><b>03</b><p><strong>Đối chiếu và kết luận</strong>{sideRoomCount} manh mối đầu vẫn để lại {preFinalCandidates} nhân vật phù hợp. Dữ kiện M{caseData.finalRoomIndex + 1} mới giúp xác định một người duy nhất.</p></div></div><div className="rule-card"><strong>Chuỗi điều tra</strong><p>Ở mức Dễ, dòng có lỗi đã được khoanh vùng. Từ mức Trung bình, hãy quét toàn bộ lời giải để tìm nơi sai lệch bắt đầu.</p><p>{caseData.clues.length} đèn vàng biểu thị tiến độ của toàn bộ {caseData.clues.length} dữ kiện.</p><p>{sideRoomCount} dữ kiện đầu mở {caseData.rooms[caseData.finalRoomIndex].name.toLocaleLowerCase('vi')}, nhưng chưa đủ để kết luận.</p><p>M{caseData.finalRoomIndex + 1} là dữ kiện quyết định; bảng Hồ sơ sẽ đối chiếu đủ {caseData.clues.length} thông tin.</p></div><p className="help-note"><strong>{caseData.discoveredAt} là mốc thời gian phát hiện sự việc, không phải đồng hồ đếm ngược.</strong> Đồng hồ trong phiếu chỉ ghi thời gian điều tra và sẽ tạm dừng khi rời màn hình. Trò chơi không giới hạn thời gian; dùng gợi ý không làm mất tiến độ.</p><Button className="gold-button" onClick={() => setHelp(false)}>Mình hiểu rồi<ArrowRight size={16} /></Button></DialogContent></Dialog>
+      <Dialog open={help} onOpenChange={setHelp}><DialogContent className="paper-modal help-modal" showCloseButton={false}><CloseButton /><DialogHeader><p className="paper-eyebrow">SỔ TAY THÁM TỬ</p><DialogTitle>Tự mình bước vào hiện trường.</DialogTitle><DialogDescription>Chọn từng căn phòng để thám tử tự di chuyển tới cửa và trực tiếp mở dữ kiện.</DialogDescription></DialogHeader><div className="help-steps"><div><b>01</b><p><strong>Chọn căn phòng</strong>Bấm vào một căn phòng; thám tử sẽ tự đi tới cửa.</p></div><div><b>02</b><p><strong>Bấm Điều tra</strong>Khi thám tử đến nơi, bấm nút Điều tra. Tìm lỗi đầu tiên rồi sửa phiếu Toán.</p></div><div><b>03</b><p><strong>Đối chiếu và kết luận</strong>{sideRoomCount} manh mối đầu vẫn để lại {preFinalCandidates} nhân vật phù hợp. Dữ kiện M{caseData.finalRoomIndex + 1} mới giúp xác định một người duy nhất.</p></div></div><div className="rule-card"><strong>Chuỗi điều tra</strong><p>1. Chọn một căn phòng và xử lý lời giải có lỗi.</p><p>2. Ở mức Dễ, dòng có lỗi được khoanh vùng. Từ mức Trung bình, hãy tìm sai lệch đầu tiên trong toàn bộ lời giải.</p><p>3. Thu thập M1–M4 để mở Buồng an ninh.</p><p>4. Lấy M5, đối chiếu bảng Hồ sơ và đưa ra kết luận.</p></div><Button className="gold-button" onClick={() => setHelp(false)}>Mình hiểu rồi<ArrowRight size={16} /></Button></DialogContent></Dialog>
 
       <Dialog open={conclude} onOpenChange={setConclude}>
         <DialogContent className="paper-modal conclusion-modal" showCloseButton={false}>
@@ -381,23 +569,87 @@ export default function Home() {
           {won ? <div className="win-content">
             <div className="case-solved-stamp"><CheckCircle2 size={30} /><span>BÍ ẨN ĐÃ ĐƯỢC GIẢI ĐÁP</span></div>
             <p className="win-verdict">{conclusion}</p>
+
+            {/* KHỐI HỒ SƠ THÁM TỬ */}
+            <div className="detective-dossier-card">
+              <div className="dossier-header">
+                <span className="dossier-title">HỒ SƠ THÁM TỬ</span>
+                <span className="dossier-stamp">E·RASE VERIFIED</span>
+              </div>
+              <div className="dossier-stats-grid">
+                <div className="dossier-stat-item">
+                  <span>VỤ ÁN HOÀN THÀNH</span>
+                  <strong>{rankResult?.completedCasesCount ?? 1}</strong>
+                </div>
+                <div className="dossier-stat-item highlight">
+                  <span>ĐIỂM NGHIỆP VỤ</span>
+                  <strong>{rankResult?.totalCareerScore ?? rankResult?.scoreBreakdown.totalScore ?? 0}</strong>
+                </div>
+                <div className="dossier-stat-item rank-box">
+                  <span>CẤP BẬC MỚI</span>
+                  <strong>{rankResult?.rank ?? 'Thám tử tập sự'}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* BẢNG TỔNG KẾT ĐIỂM CHI TIẾT */}
+            {rankResult?.scoreBreakdown && (
+              <div className="my-3">
+                <p className="paper-eyebrow">BẢNG ĐIỂM NGHIỆP VỤ VỤ ÁN</p>
+                <table className="score-summary-table">
+                  <thead>
+                    <tr>
+                      <th>Hạng mục</th>
+                      <th>Nhiệm vụ</th>
+                      <th>Tìm lỗi</th>
+                      <th>Sửa lỗi</th>
+                      <th>Gợi ý</th>
+                      <th className="text-right">Điểm</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankResult.scoreBreakdown.rooms.map((r, i) => (
+                      <tr key={i}>
+                        <td><strong>Phòng {i + 1}</strong>: {caseData.rooms[i].name}</td>
+                        <td>+{r.completion}</td>
+                        <td>+{r.findScore}</td>
+                        <td>+{r.repairScore}</td>
+                        <td>+{r.hintScore}</td>
+                        <td className="text-right font-bold text-[#80633d]">+{r.total}/12</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td><strong>Kết luận vụ án</strong></td>
+                      <td>+{rankResult.scoreBreakdown.conclusion.completion}</td>
+                      <td colSpan={3}>Chính xác: +{rankResult.scoreBreakdown.conclusion.accuracyScore}</td>
+                      <td className="text-right font-bold text-[#80633d]">+{rankResult.scoreBreakdown.conclusion.total}/40</td>
+                    </tr>
+                    <tr className="total-row">
+                      <td colSpan={5}><strong>TỔNG ĐIỂM VỤ ÁN</strong></td>
+                      <td className="text-right font-bold text-[#745c3d]">{rankResult.scoreBreakdown.totalScore}/100</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             <p className="paper-eyebrow">NHẬT KÝ ĐIỀU TRA</p>
             <div className="journal-summary">
               <span><b>{work.length}/{work.length}</b><small>Manh mối đã mở</small></span>
               <span><b>{report.immediate}</b><small>Xác định ngay</small></span>
               <span><b>{report.independent}</b><small>Tự xác minh</small></span>
               <span><b>{report.assisted}</b><small>Có hỗ trợ</small></span>
-              <span><b>{formatInvestigationTime(report.activeSeconds)}</b><small>Thời gian điều tra</small></span>
+              <span><b>{formatInvestigationTime(totalSeconds)}</b><small>Thời gian điều tra</small></span>
             </div>
             <p className="journal-narrative">{report.narrative}</p>
             <Table className="results-table journal-table">
-              <TableHeader><TableRow><TableHead>Phiếu</TableHead><TableHead>Tìm lỗi</TableHead><TableHead>Sửa lỗi</TableHead><TableHead>Dấu vết</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Phiếu</TableHead><TableHead>Thời gian phòng</TableHead><TableHead>Tìm lỗi</TableHead><TableHead>Sửa lỗi</TableHead><TableHead>Dấu vết</TableHead></TableRow></TableHeader>
               <TableBody>{work.map((w, i) => {
                 const status = traceStatus(w);
-                return <TableRow key={i}><TableCell>Bài {questions[i].id}</TableCell><TableCell>Lần {w.findMisses + 1} · {formatInvestigationTime(w.findSeconds)}</TableCell><TableCell>Lần {w.repairMisses + 1} · {formatInvestigationTime(w.repairSeconds)}</TableCell><TableCell><span className={'trace-status ' + status}>{TRACE_STATUS_LABELS[status]}</span></TableCell></TableRow>;
+                return <TableRow key={i}><TableCell>Bài {questions[i].id}</TableCell><TableCell>{formatInvestigationTime(roomTimes[i] || (w.findSeconds + w.repairSeconds))}</TableCell><TableCell>Lần {w.findMisses + 1}</TableCell><TableCell>Lần {w.repairMisses + 1}</TableCell><TableCell><span className={'trace-status ' + status}>{TRACE_STATUS_LABELS[status]}</span></TableCell></TableRow>;
               })}</TableBody>
             </Table>
-            <div className="session-observation"><Clock3 size={16} /><span>{report.tabExits > 0 ? `Rời màn hình ${report.tabExits} lần · ${formatInvestigationTime(report.inactiveSeconds)}.` : 'Không rời màn hình trong lúc xử lý các vụ án.'}</span></div>
+            <div className="session-observation"><Clock3 size={16} /><span>{tabExits > 0 ? `Rời màn hình ${tabExits} lần · ${formatInvestigationTime(inactiveSeconds)}.` : 'Không rời màn hình trong suốt quá trình phá án.'}</span></div>
             <Button className="gold-button" onClick={() => { setConclude(false); setTab('board'); }}>Xem lại hồ sơ<Users size={16} /></Button>
           </div> : <>
             <RadioGroup value={accused} onValueChange={v => { setAccused(v); setConclusion(''); }} className="accused-choices" aria-label={caseData.conclusionQuestion}>{caseData.people.map((p, i) => <label key={p.id} className={'accused-choice ' + (accused === String(i) ? 'selected' : '')}><RadioGroupItem value={String(i)} id={'accused-' + i} /><Initial person={i} small /><strong>{p.name}</strong></label>)}</RadioGroup>
@@ -407,6 +659,7 @@ export default function Home() {
           </>}
         </DialogContent>
       </Dialog>
+
 
       <AlertDialog open={restart} onOpenChange={setRestart}><AlertDialogContent className="paper-modal"><AlertDialogHeader><AlertDialogTitle>Bắt đầu lại vụ án?</AlertDialogTitle><AlertDialogDescription>Các phiếu đã sửa, manh mối và bảng đối chiếu trong lượt này sẽ được đặt lại.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel className="secondary-paper-button">Tiếp tục lượt này</AlertDialogCancel><AlertDialogAction className="gold-button" onClick={reset}>Bắt đầu lại</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
 

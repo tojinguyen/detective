@@ -97,7 +97,7 @@ export const CASE_01 = {
   people: [
     { id: 'ha', name: 'Cô Hạ', role: 'Giáo viên Mỹ thuật', color: '#bc8951', facts: { height: 158, arrived: '15:52', card: 'Xanh dương', caseLength: 24, route: 'Cầu thang' } },
     { id: 'khai', name: 'Thầy Khải', role: 'Phụ trách thiết bị', color: '#7c9e9b', facts: { height: 171, arrived: '15:38', card: 'Xanh dương', caseLength: 32, route: 'Cầu thang' } },
-    { id: 'ngan', name: 'Cô Ngân', role: 'Thủ thư', color: '#b98c88', facts: { height: 166, arrived: '15:48', card: 'Xanh lá', caseLength: 18, route: 'Cầu thang' } },
+    { id: 'ngan', name: 'Cô Ngân', role: 'Thủ thư', color: '#a58a74', facts: { height: 166, arrived: '15:48', card: 'Xanh lá', caseLength: 18, route: 'Cầu thang' } },
     { id: 'phuc', name: 'Anh Phúc', role: 'Kỹ thuật viên sự kiện', color: '#8995b2', facts: { height: 174, arrived: '15:55', card: 'Xanh dương', caseLength: 28, route: 'Cầu thang' } },
     { id: 'vy', name: 'Cô Vy', role: 'Điều phối buổi lễ', color: '#a6a16b', facts: { height: 169, arrived: '16:02', card: 'Xanh dương', caseLength: 28, route: 'Thang máy' } },
   ],

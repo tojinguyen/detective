@@ -1,9 +1,12 @@
+import { calculateCaseScore, type CaseScoreBreakdown } from './scoring';
+
 export type InvestigationRecord = {
   stage: 'detect' | 'repair' | 'done';
   findMisses: number;
   repairMisses: number;
   findSeconds: number;
   repairSeconds: number;
+  roomSeconds?: number;
   hintOpened: boolean;
   tabExits: number;
   inactiveSeconds: number;
@@ -26,22 +29,46 @@ export function traceStatus(record: InvestigationRecord): TraceStatus {
 }
 
 export function formatInvestigationTime(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const safeSeconds = Math.max(0, Math.floor(seconds || 0));
   const minutes = Math.floor(safeSeconds / 60);
   const remainder = safeSeconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
 }
 
-export function investigationReport(records: InvestigationRecord[]) {
+export interface FullInvestigationReportOptions {
+  totalInvestigationSeconds?: number;
+  boardSeconds?: number;
+  conclusionAttempts?: number;
+  won?: boolean;
+}
+
+export function investigationReport(
+  records: InvestigationRecord[],
+  options?: FullInvestigationReportOptions
+) {
   const statuses = records.map(traceStatus);
   const count = (status: TraceStatus) => statuses.filter(item => item === status).length;
   const immediate = count('immediate');
   const independent = count('independent');
   const assisted = count('assisted');
   const unfinished = count('unfinished');
-  const activeSeconds = records.reduce((total, record) => total + record.findSeconds + record.repairSeconds, 0);
+  
+  // Thời gian bài toán cũ (tìm + sửa)
+  const mathActiveSeconds = records.reduce((total, record) => total + record.findSeconds + record.repairSeconds, 0);
+  
+  // Thời gian toàn vụ án mới (nếu được truyền vào từ timer tổng, ngược lại fallback mathActiveSeconds)
+  const totalSeconds = options?.totalInvestigationSeconds !== undefined
+    ? options.totalInvestigationSeconds
+    : mathActiveSeconds;
+
   const tabExits = records.reduce((total, record) => total + record.tabExits, 0);
   const inactiveSeconds = records.reduce((total, record) => total + record.inactiveSeconds, 0);
+  const boardSeconds = options?.boardSeconds ?? 0;
+  const roomTimes = records.map(r => r.roomSeconds ?? (r.findSeconds + r.repairSeconds));
+
+  const won = options?.won ?? (unfinished === 0);
+  const conclusionMisses = Math.max(0, (options?.conclusionAttempts ?? 1) - 1);
+  const scoreBreakdown: CaseScoreBreakdown = calculateCaseScore(records, won, conclusionMisses);
 
   let narrative: string;
   if (unfinished > 0) {
@@ -54,5 +81,18 @@ export function investigationReport(records: InvestigationRecord[]) {
     narrative = `Vụ án đã được khép lại. Bạn đã tự kiểm tra và điều chỉnh ${independent} phán đoán trước khi xác minh đủ các manh mối.`;
   }
 
-  return { immediate, independent, assisted, unfinished, activeSeconds, tabExits, inactiveSeconds, narrative };
+  return {
+    immediate,
+    independent,
+    assisted,
+    unfinished,
+    activeSeconds: totalSeconds,
+    mathActiveSeconds,
+    boardSeconds,
+    roomTimes,
+    tabExits,
+    inactiveSeconds,
+    scoreBreakdown,
+    narrative,
+  };
 }
