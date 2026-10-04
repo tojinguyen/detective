@@ -1,4 +1,4 @@
-import { calculateCaseScore, type CaseScoreBreakdown } from './scoring';
+import { calculateCaseScore, type CaseScoreBreakdown } from './scoring.ts';
 
 export type InvestigationRecord = {
   stage: 'detect' | 'repair' | 'done';
