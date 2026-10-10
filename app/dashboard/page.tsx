@@ -4,8 +4,9 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
-import { Users, Clock, AlertTriangle, CheckCircle2, Search, Download, ArrowLeft, Eye, Award, FileSpreadsheet } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CheckCircle2, Search, Download, Eye, Award, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AppHeader } from '@/components/app-header';
 
 interface SessionRecord {
   question_id: number;
@@ -118,34 +119,33 @@ export default function AdminDashboardPage() {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-[#101d24] flex flex-col items-center justify-center p-4 text-center">
-        <AlertTriangle size={42} className="text-[#d3765e] mb-2" />
-        <h1 className="text-xl font-serif text-[#efe9dc]">Chỉ dành cho Quản trị viên</h1>
-        <p className="text-xs text-[#879896] mt-1 mb-4">Bạn cần đăng nhập bằng 1 trong 5 tài khoản Admin để xem Dashboard.</p>
-        <Link href="/" className="px-4 py-2 bg-[#ceac79] text-[#101d24] font-bold text-xs rounded">Quay về Vụ án 01</Link>
+      <div className="min-h-screen bg-[#101d24] text-[#e9e5d9]">
+        <AppHeader currentView="dashboard" />
+        <div className="flex flex-col items-center justify-center p-12 text-center">
+          <AlertTriangle size={42} className="text-[#d3765e] mb-2" />
+          <h1 className="text-xl font-serif text-[#efe9dc]">Chỉ dành cho Quản trị viên</h1>
+          <p className="text-xs text-[#879896] mt-1 mb-4">Bạn cần đăng nhập bằng 1 trong các tài khoản Admin để xem Dashboard.</p>
+          <Link href="/" className="px-4 py-2 bg-[#ceac79] text-[#101d24] font-bold text-xs rounded">Quay về Danh mục Vụ án</Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#101d24] text-[#e9e5d9] p-6 max-w-7xl mx-auto">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#34474e] pb-4 mb-6">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="p-2 hover:bg-[#192932] rounded text-[#ceac79]"><ArrowLeft size={18} /></Link>
+    <div className="min-h-screen bg-[#101d24] text-[#e9e5d9]">
+      <AppHeader currentView="dashboard" />
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#34474e] pb-4 mb-6">
           <div>
             <p className="text-[10px] tracking-widest text-[#bb9c70] font-bold">GIÁM SÁT HỌC TẬP THỜI GIAN THỰC</p>
             <h1 className="text-2xl font-serif text-[#efe9dc]">Nhật ký điều tra của học sinh</h1>
           </div>
+          <div className="flex gap-2">
+            <Button onClick={exportCSV} variant="outline" className="text-xs gap-1 border-[#4a5b60]">
+              <Download size={14} /> Xuất CSV
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={exportCSV} variant="outline" className="text-xs gap-1 border-[#4a5b60]">
-            <Download size={14} /> Xuất CSV
-          </Button>
-          <Link href="/question-bank" className="gold-button flex items-center gap-1 text-xs px-3 py-2 rounded font-semibold">
-            Kho bài tập
-          </Link>
-        </div>
-      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-[#15242b] border border-[#34474e] p-4 rounded-lg flex items-center gap-3">
@@ -285,6 +285,7 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

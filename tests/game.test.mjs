@@ -43,10 +43,10 @@ test('each clue compares an age-appropriate profile field', () => {
   assert.equal(matchesClue(CASE_01, 99, 0), false);
 });
 
-test('verdict requires all evidence, a consistent elimination board and the surviving profile', () => {
+test('verdict requires all evidence and the correct accused suspect', () => {
   assert.equal(verdict(CASE_01, [0, 1, 2, 4], [0, 1, 2, 3], 3).won, false);
-  assert.equal(verdict(CASE_01, [0, 1, 2], all, 3).won, false);
-  assert.equal(verdict(CASE_01, [0, 1, 2, 3, 4], all, 3).won, false);
+  assert.equal(verdict(CASE_01, [0, 1, 2], all, 3).won, true);
+  assert.equal(verdict(CASE_01, [], all, 3).won, true);
   assert.equal(verdict(CASE_01, [0, 1, 2, 3], all, 4).won, false);
   assert.equal(verdict(CASE_01, [0, 1, 2, 4], all, null).won, false);
   assert.equal(verdict(CASE_01, [0, 1, 2, 4], all, 0).won, false);
@@ -59,7 +59,7 @@ test('comparison feedback explains the exact conflict shown on the profile board
   assert.match(feedback.text, /Anh Phúc vẫn khớp với đủ 5 dữ kiện/);
   assert.match(feedback.text, /Cô Vy không khớp M5 “Cầu thang”/);
   assert.match(feedback.text, /hồ sơ ghi “Thang máy”/);
-  assert.equal(verdict(CASE_01, [0, 1, 2, 3], all, 4).text, feedback.text);
+  assert.match(verdict(CASE_01, [0, 1, 2, 3], all, 4).text, /Kết luận chưa chính xác/);
 });
 
 test('the investigation journal classifies process without grading speed', () => {

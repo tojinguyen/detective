@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import katex from 'katex';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen, Trophy, Award, Play } from 'lucide-react';
+import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen, Trophy, Award, Play, FolderSearch } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { AuthModal } from '@/components/auth-modal';
 import { supabase } from '@/lib/supabase';
@@ -16,16 +16,19 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { candidates, comparisonFeedback, verdict, isDetectionCorrect, isCorrectionCorrect } from '@/lib/game';
-import { CASE_01, type Direction } from '@/lib/cases';
+import { CASE_01, CASES, getCase, type Direction, type CaseDefinition } from '@/lib/cases';
 import { defaultQuestionsForCase, questionsForCase, readLocalContent, type Question } from '@/lib/content';
 import { tokeniseMath } from '@/lib/latex-question-parser';
 import { formatInvestigationTime, investigationReport, traceStatus, TRACE_STATUS_LABELS, type InvestigationRecord } from '@/lib/investigation-report';
 import { evaluateRank, type DetectiveRank, type CaseScoreBreakdown } from '@/lib/scoring';
+import { CaseSelector } from '@/components/case-selector';
+import { CaseBriefingModal } from '@/components/case-briefing-modal';
+import { AppHeader } from '@/components/app-header';
+import { DetectiveHandbookModal } from '@/components/detective-handbook-modal';
 
 type Work = InvestigationRecord & { selection: string | null; answer: string; message: string };
 type Point = { x: number; y: number };
-const caseData = CASE_01;
-const initialWork = (): Work[] => caseData.rooms.map(() => ({ stage: 'detect', selection: null, answer: '', findMisses: 0, repairMisses: 0, message: '', hintOpened: false, findSeconds: 0, repairSeconds: 0, tabExits: 0, inactiveSeconds: 0 }));
+const getInitialWork = (c: CaseDefinition): Work[] => c.rooms.map(() => ({ stage: 'detect', selection: null, answer: '', findMisses: 0, repairMisses: 0, message: '', hintOpened: false, findSeconds: 0, repairSeconds: 0, tabExits: 0, inactiveSeconds: 0 }));
 const SPRITE_POSITIONS: Record<Direction, { idle: string; walk: string }> = {
   front: { idle: '0% 0%', walk: '33.333% 0%' },
   back: { idle: '66.667% 0%', walk: '100% 0%' },
@@ -33,19 +36,8 @@ const SPRITE_POSITIONS: Record<Direction, { idle: string; walk: string }> = {
   right: { idle: '66.667% 100%', walk: '100% 100%' },
 };
 const PROFILE_ICONS = { ruler: Ruler, clock: Clock3, card: CreditCard, package: Package, route: Route } as const;
-const personStyle = (i: number): CSSProperties => ({ '--person': caseData.people[i].color }) as CSSProperties;
-const portraitPosition = (index: number) => caseData.people.length === 1 ? 50 : (index / (caseData.people.length - 1)) * 100;
-const factText = (person: number, field: number) => {
-  const definition = caseData.profileFields[field];
-  const facts = caseData.people[person].facts as Record<string, string | number>;
-  return String(facts[definition.key]) + (definition.suffix ?? '');
-};
 function MathText({ value }: { value: string }) {
   return <span className="math" dangerouslySetInnerHTML={{ __html: katex.renderToString(value, { throwOnError: false, strict: 'ignore', trust: false, output: 'htmlAndMathml' }) }} />;
-}
-function Initial({ person, small = false }: { person: number; small?: boolean }) {
-  const initial = caseData.people[person].name.trim().split(/\s+/).at(-1)?.[0] ?? '?';
-  return <span className={'initial ' + (small ? 'small' : '')} style={personStyle(person)} aria-hidden="true">{initial}</span>;
 }
 function CloseButton() {
   return <DialogClose asChild><button className="close-button" aria-label="Đóng cửa sổ"><X size={19} /></button></DialogClose>;
@@ -54,8 +46,22 @@ function CloseButton() {
 export default function Home() {
   const { user, profile, isAdmin, signOut, loading } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [briefingCase, setBriefingCase] = useState<CaseDefinition | null>(null);
+  const [completedCases, setCompletedCases] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('erase_completed_cases');
+        return stored ? JSON.parse(stored) : [];
+      } catch {}
+    }
+    return [];
+  });
+
+  const caseData = (selectedCaseId ? getCase(selectedCaseId) : null) || CASE_01;
+
   const [tab, setTab] = useState('rooms');
-  const [work, setWork] = useState<Work[]>(initialWork);
+  const [work, setWork] = useState<Work[]>(() => getInitialWork(caseData));
   const [active, setActive] = useState<number | null>(null);
   const [screen, setScreen] = useState<'scene' | 'question'>('scene');
   const [eliminated, setEliminated] = useState<number[]>([]);
@@ -66,12 +72,24 @@ export default function Home() {
   const [accused, setAccused] = useState<string>('');
   const [conclusion, setConclusion] = useState('');
   const [won, setWon] = useState(false);
-  const [logicHint, setLogicHint] = useState(false);
   const [player, setPlayer] = useState<Point>({ x: 50, y: 57 });
   const [facing, setFacing] = useState<Direction>('front');
   const [walking, setWalking] = useState(false);
   const [questions, setQuestions] = useState<Question[]>(() => defaultQuestionsForCase(caseData));
   const [worldMessage, setWorldMessage] = useState('Chọn một căn phòng để thám tử tự di chuyển tới vật chứng.');
+
+  const personStyle = (i: number): CSSProperties => ({ '--person': caseData.people[i]?.color || '#888' }) as CSSProperties;
+  const portraitPosition = (index: number) => caseData.people.length === 1 ? 50 : (index / (caseData.people.length - 1)) * 100;
+  const factText = (person: number, field: number) => {
+    const definition = caseData.profileFields[field];
+    if (!definition) return '';
+    const facts = (caseData.people[person]?.facts || {}) as Record<string, string | number>;
+    return String(facts[definition.key] ?? '') + (definition.suffix ?? '');
+  };
+  function Initial({ person, small = false }: { person: number; small?: boolean }) {
+    const initial = caseData.people[person]?.name.trim().split(/\s+/).at(-1)?.[0] ?? '?';
+    return <span className={'initial ' + (small ? 'small' : '')} style={personStyle(person)} aria-hidden="true">{initial}</span>;
+  }
 
   // Timing và Scoring states
   const [isStarted, setIsStarted] = useState(false);
@@ -98,8 +116,6 @@ export default function Home() {
   const question = active === null ? null : questions[active];
   const fullSearch = question?.difficulty === 'Trung bình' || question?.difficulty === 'Khó';
   const nearbyRoom = caseData.rooms.findIndex(room => Math.hypot(player.x - room.door.x, player.y - room.door.y) <= 10);
-  const latestClue = revealed.length ? Math.max(...revealed) + 1 : 0;
-  const logicHintText = caseData.logicHints[Math.min(latestClue, caseData.logicHints.length - 1)];
   const sideRoomCount = caseData.rooms.filter(room => !room.final).length;
   const preFinalCandidates = candidates(caseData, caseData.clues.map((_, index) => index).filter(index => index !== caseData.finalRoomIndex)).length;
 
@@ -115,8 +131,9 @@ export default function Home() {
     setWorldMessage('Cuộc điều tra đã bắt đầu! Hãy chọn một căn phòng để thám tử di chuyển tới.');
   }, []);
 
-  // Khôi phục tiến trình từ localStorage khi tải trang
+  // Khôi phục tiến trình từ localStorage khi tải trang hoặc đổi vụ án
   useEffect(() => {
+    if (!selectedCaseId) return;
     const saveKey = `erase_progress_${caseData.id}_${user?.id || 'guest'}`;
     try {
       const saved = localStorage.getItem(saveKey);
@@ -135,7 +152,23 @@ export default function Home() {
         }
       }
     } catch {}
-  }, [user?.id]);
+  }, [caseData.id, selectedCaseId, user?.id]);
+
+  // Cập nhật danh sách vụ án đã phá khi chiến thắng
+  useEffect(() => {
+    if (won && caseData) {
+      setCompletedCases(prev => {
+        if (!prev.includes(caseData.id)) {
+          const updated = [...prev, caseData.id];
+          try {
+            localStorage.setItem('erase_completed_cases', JSON.stringify(updated));
+          } catch {}
+          return updated;
+        }
+        return prev;
+      });
+    }
+  }, [won, caseData]);
 
   // Lưu tiến trình vào localStorage khi có thay đổi
   useEffect(() => {
@@ -398,7 +431,8 @@ export default function Home() {
     setInactiveSeconds(0);
     setConclusionAttempts(0);
     setRankResult(null);
-    setWork(initialWork());
+    setWork(getInitialWork(caseData));
+    setQuestions(defaultQuestionsForCase(caseData));
     setEliminated([]);
     setActive(null);
     setScreen('scene');
@@ -408,7 +442,6 @@ export default function Home() {
     setWon(false);
     setConclude(false);
     setTab('rooms');
-    setLogicHint(false);
     setPlayer({ x: 50, y: 57 });
     setFacing('front');
     setWalking(false);
@@ -429,36 +462,103 @@ export default function Home() {
     );
   }
 
+  // Màn hình tổng sau khi đăng nhập: Danh mục các vụ án
+  if (selectedCaseId === null) {
+    return (
+      <div className="game-shell">
+        <AppHeader
+          user={user}
+          profile={profile}
+          isAdmin={isAdmin}
+          currentView="selector"
+          onBackToCatalog={() => setSelectedCaseId(null)}
+          onOpenHelp={() => setHelp(true)}
+          onSignOut={signOut}
+          onSignIn={() => setAuthOpen(true)}
+          rankTitle={rankResult?.rank || 'Thám tử tập sự'}
+          careerScore={rankResult?.totalCareerScore || 0}
+        />
+
+        <CaseSelector
+          userName={profile?.full_name || user?.email?.split('@')[0] || 'Học viên'}
+          rankTitle={rankResult?.rank || 'Thám tử tập sự'}
+          careerScore={rankResult?.totalCareerScore || 0}
+          completedCasesCount={completedCases.length}
+          completedCaseIds={completedCases}
+          onSelectCase={(c) => {
+            setBriefingCase(c);
+          }}
+        />
+
+        <CaseBriefingModal
+          open={!!briefingCase}
+          onOpenChange={(open) => {
+            if (!open) setBriefingCase(null);
+          }}
+          caseData={briefingCase}
+          onBackToSelector={() => setBriefingCase(null)}
+          onStartInvestigation={() => {
+            if (briefingCase) {
+              const targetCase = briefingCase;
+              setSelectedCaseId(targetCase.id);
+              setBriefingCase(null);
+              setWork(getInitialWork(targetCase));
+              setQuestions(defaultQuestionsForCase(targetCase));
+              setActive(null);
+              setScreen('scene');
+              setEliminated([]);
+              setBoardMessage('');
+              setAccused('');
+              setConclusion('');
+              setWon(false);
+              setConclude(false);
+              setTab('rooms');
+              setPlayer({ x: 50, y: 57 });
+              setFacing('front');
+              setWalking(false);
+              setIsStarted(true);
+              setTotalSeconds(0);
+              setBoardSeconds(0);
+              setRoomTimes(targetCase.rooms.map(() => 0));
+              setTabExits(0);
+              setInactiveSeconds(0);
+              setConclusionAttempts(0);
+              setWorldMessage(`Cuộc điều tra ${targetCase.title} đã bắt đầu! Hãy chọn một căn phòng để thám tử di chuyển tới.`);
+            }
+          }}
+        />
+
+        <DetectiveHandbookModal
+          open={help}
+          onOpenChange={setHelp}
+        />
+
+        <AuthModal
+          open={!user ? true : authOpen}
+          onOpenChange={setAuthOpen}
+          mandatory={!user}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="game-shell">
-      <header className="topbar">
-        <a className="wordmark" href="#main" aria-label="E·RASE"><Search size={25} /><span>E·RASE</span></a>
-        <div className="top-actions">
-          {isAdmin && (
-            <>
-              <Link href="/dashboard" className="quiet-button flex items-center gap-1 text-xs">
-                <LayoutDashboard size={15} /> Dashboard
-              </Link>
-              <Link href="/question-bank" className="quiet-button flex items-center gap-1 text-xs">
-                <BookOpen size={15} /> Kho đề
-              </Link>
-            </>
-          )}
-          {user ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#deb97b] font-medium">{profile?.full_name || 'Thám tử'}</span>
-              <Button variant="ghost" className="quiet-button" onClick={signOut} title="Đăng xuất"><LogOut size={16} /></Button>
-            </div>
-          ) : (
-            <Button variant="ghost" className="quiet-button" onClick={() => setAuthOpen(true)}>
-              <LogIn size={16} /> Đăng nhập
-            </Button>
-          )}
-          <Button variant="ghost" className="quiet-button restart-top" onClick={() => setRestart(true)} aria-label="Bắt đầu lại vụ án">
-            <RotateCcw size={17} />
-          </Button>
-        </div>
-      </header>
+      <AppHeader
+        user={user}
+        profile={profile}
+        isAdmin={isAdmin}
+        currentView="game"
+        caseTitle={caseData.title}
+        caseNumber={caseData.number}
+        onBackToCatalog={() => setSelectedCaseId(null)}
+        onOpenHelp={() => setHelp(true)}
+        onResetCase={() => setRestart(true)}
+        onSignOut={signOut}
+        onSignIn={() => setAuthOpen(true)}
+        rankTitle={rankResult?.rank || 'Thám tử tập sự'}
+        careerScore={rankResult?.totalCareerScore || 0}
+      />
       <main id="main" className="workspace game-workspace">
         <div className="play-layout hud-layout">
           <section className="play-area" aria-label="Khu vực điều tra">
@@ -522,8 +622,7 @@ export default function Home() {
                     {isOut && <span className="eliminated-stamp"><X size={22} />KHÔNG KHỚP</span>}
                   </button>; })}
                 </div>
-                <div className="board-actions"><Button className="secondary-button" onClick={compare}><ScanSearch size={16} />Đối chiếu</Button><Button variant="ghost" className="quiet-button" onClick={() => setLogicHint(!logicHint)}><Lightbulb size={16} />Gợi ý suy luận</Button><Button className="gold-button conclude-button" onClick={() => { if (!won) setConclusion(''); setConclude(true); }}><Flag size={16} />Kết luận</Button></div>
-                {logicHint && <div className="logic-hint"><Lightbulb size={17} /><p>{logicHintText}</p></div>}
+                <div className="board-actions"><Button className="secondary-button" onClick={compare}><ScanSearch size={16} />Đối chiếu</Button><Button className="gold-button conclude-button" onClick={() => { if (!won) setConclusion(''); setConclude(true); }}><Flag size={16} />Kết luận</Button></div>
                 {boardMessage && <p className="board-feedback" role="status">{boardMessage}</p>}
               </TabsContent>
             </Tabs>
@@ -556,10 +655,13 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={help} onOpenChange={setHelp}><DialogContent className="paper-modal help-modal" showCloseButton={false}><CloseButton /><DialogHeader><p className="paper-eyebrow">SỔ TAY THÁM TỬ</p><DialogTitle>Tự mình bước vào hiện trường.</DialogTitle><DialogDescription>Chọn từng căn phòng để thám tử tự di chuyển tới cửa và trực tiếp mở dữ kiện.</DialogDescription></DialogHeader><div className="help-steps"><div><b>01</b><p><strong>Chọn căn phòng</strong>Bấm vào một căn phòng; thám tử sẽ tự đi tới cửa.</p></div><div><b>02</b><p><strong>Bấm Điều tra</strong>Khi thám tử đến nơi, bấm nút Điều tra. Tìm lỗi đầu tiên rồi sửa phiếu Toán.</p></div><div><b>03</b><p><strong>Đối chiếu và kết luận</strong>{sideRoomCount} manh mối đầu vẫn để lại {preFinalCandidates} nhân vật phù hợp. Dữ kiện M{caseData.finalRoomIndex + 1} mới giúp xác định một người duy nhất.</p></div></div><div className="rule-card"><strong>Chuỗi điều tra</strong><p>1. Chọn một căn phòng và xử lý lời giải có lỗi.</p><p>2. Ở mức Dễ, dòng có lỗi được khoanh vùng. Từ mức Trung bình, hãy tìm sai lệch đầu tiên trong toàn bộ lời giải.</p><p>3. Thu thập M1–M4 để mở Buồng an ninh.</p><p>4. Lấy M5, đối chiếu bảng Hồ sơ và đưa ra kết luận.</p></div><Button className="gold-button" onClick={() => setHelp(false)}>Mình hiểu rồi<ArrowRight size={16} /></Button></DialogContent></Dialog>
+      <DetectiveHandbookModal
+        open={help}
+        onOpenChange={setHelp}
+      />
 
       <Dialog open={conclude} onOpenChange={setConclude}>
-        <DialogContent className="paper-modal conclusion-modal" showCloseButton={false}>
+        <DialogContent className="conclusion-modal" showCloseButton={false}>
           <CloseButton />
           <DialogHeader>
             <p className="paper-eyebrow">{won ? 'HỒ SƠ ' + caseData.number + ' · ĐÃ GIẢI' : 'BẢN KẾT LUẬN'}</p>
@@ -650,9 +752,38 @@ export default function Home() {
               })}</TableBody>
             </Table>
             <div className="session-observation"><Clock3 size={16} /><span>{tabExits > 0 ? `Rời màn hình ${tabExits} lần · ${formatInvestigationTime(inactiveSeconds)}.` : 'Không rời màn hình trong suốt quá trình phá án.'}</span></div>
-            <Button className="gold-button" onClick={() => { setConclude(false); setTab('board'); }}>Xem lại hồ sơ<Users size={16} /></Button>
+            <div className="flex flex-col sm:flex-row items-center gap-2 mt-2">
+              <Button className="gold-button flex-1 w-full" onClick={() => { setConclude(false); setTab('board'); }}>
+                Xem lại hồ sơ<Users size={16} />
+              </Button>
+              <Button
+                variant="ghost"
+                className="quiet-paper-button flex-1 w-full border border-[#2e434c]"
+                onClick={() => { setConclude(false); setSelectedCaseId(null); }}
+              >
+                <FolderSearch size={15} />Danh mục vụ án
+              </Button>
+            </div>
           </div> : <>
-            <RadioGroup value={accused} onValueChange={v => { setAccused(v); setConclusion(''); }} className="accused-choices" aria-label={caseData.conclusionQuestion}>{caseData.people.map((p, i) => <label key={p.id} className={'accused-choice ' + (accused === String(i) ? 'selected' : '')}><RadioGroupItem value={String(i)} id={'accused-' + i} /><Initial person={i} small /><strong>{p.name}</strong></label>)}</RadioGroup>
+            <RadioGroup value={accused} onValueChange={v => { setAccused(v); setConclusion(''); }} className="accused-choices" aria-label={caseData.conclusionQuestion}>
+              {caseData.people.map((p, i) => {
+                const isSelected = accused === String(i);
+                return (
+                  <label
+                    key={p.id}
+                    className={`accused-choice transition-all cursor-pointer ${
+                      isSelected
+                        ? 'selected !bg-[#2e2414] !border-[#deb97b] !shadow-[0_0_14px_rgba(222,185,123,0.35)]'
+                        : '!bg-[#122228] !border-[#2d424b] hover:!bg-[#19313a] hover:!border-[#deb97b99]'
+                    }`}
+                  >
+                    <RadioGroupItem value={String(i)} id={'accused-' + i} className="border-[#657b85] text-[#deb97b]" />
+                    <Initial person={i} small />
+                    <strong className="!text-[#f0ece1]">{p.name}</strong>
+                  </label>
+                );
+              })}
+            </RadioGroup>
             {conclusion && <p className="conclusion-feedback" role="status">{conclusion}</p>}
             <Button className="gold-button" onClick={submitConclusion}><Flag size={16} />Gửi kết luận</Button>
             <Button variant="ghost" className="quiet-paper-button" onClick={() => { setConclude(false); setTab('board'); }}><ArrowLeft size={15} />Quay lại hồ sơ</Button>

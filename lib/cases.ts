@@ -44,11 +44,23 @@ export type CaseClue = {
   };
 };
 
+export type CasePrologue = {
+  location: string;
+  time: string;
+  background: string;
+  incident: string;
+  mission: string[];
+};
+
 export type CaseDefinition = {
   id: string;
   number: string;
   title: string;
   discoveredAt: string;
+  status?: 'available' | 'upcoming';
+  topicBadge?: string;
+  difficulty?: 'Dễ' | 'Trung bình' | 'Nâng cao';
+  estimatedTime?: string;
   objective: {
     initial: string;
     finalRoom: string;
@@ -59,6 +71,7 @@ export type CaseDefinition = {
     groupLabel: string;
     missingData: string;
   };
+  prologue?: CasePrologue;
   rooms: readonly CaseRoom[];
   people: readonly CasePerson[];
   profileFields: readonly ProfileField[];
@@ -77,6 +90,10 @@ export const CASE_01 = {
   number: '01',
   title: 'Chiếc huy hiệu biến mất',
   discoveredAt: '16:12',
+  status: 'available',
+  topicBadge: 'Số học & Thứ tự thực hiện phép tính',
+  difficulty: 'Trung bình',
+  estimatedTime: '15 - 20 phút',
   objective: {
     initial: 'Tìm người đã di chuyển huy hiệu',
     finalRoom: 'Tìm dữ kiện quyết định tại buồng 05',
@@ -86,6 +103,17 @@ export const CASE_01 = {
     summary: 'Chiếc huy hiệu không còn trong tủ trước lễ tuyên dương. Một thành viên nhóm chuẩn bị đã chuyển nó sang vị trí khác nhưng tờ bàn giao bị thất lạc.',
     groupLabel: 'Nhóm chuẩn bị',
     missingData: 'Mất hình',
+  },
+  prologue: {
+    location: 'Hội trường sự kiện E·RASE',
+    time: '16:12 · Trước lễ tuyên dương 48 phút',
+    background: 'Buổi lễ tuyên dương học sinh xuất sắc sắp chính thức diễn ra tại hội trường trung tâm. Chiếc huy hiệu danh dự mạ vàng - biểu tượng cao quý nhất của buổi lễ - đã được giao cho Nhóm chuẩn bị sự kiện bảo quản cẩn mật trong tủ kính an toàn.',
+    incident: 'Đúng 16:12, ban tổ chức kiểm tra trước giờ khai mạc thì phát hiện chiếc huy hiệu đã không còn trong tủ! Tờ bàn giao thiết bị bị thất lạc trong quá trình chuyển đồ, camera hành lang bị trục trặc khiến việc xác định người cầm huy hiệu bị gián đoạn.',
+    mission: [
+      'Điều tra 5 phòng hiện trường, tìm lỗi sai và sửa đúng 5 phiếu bài tập Toán để khôi phục dữ liệu vật chứng.',
+      'Thu thập đủ 5 manh mối về đặc điểm nhận dạng, kích thước hộp đồ vật và hành trình di chuyển.',
+      'Đối chiếu bảng hồ sơ nhân vật và đưa ra bản kết luận chính xác để kịp thời bàn giao lại huy hiệu trước giờ khai mạc!'
+    ]
   },
   rooms: [
     { no: '01', name: 'Phòng học', source: 'PHÒNG HỌC', object: 'Phiếu nháp trên bàn', image: '/room-classroom.png', note: 'Một lời giải bị bỏ dở cạnh cửa sổ.', position: 'north', final: false, door: { x: 50, y: 27 }, facing: 'back' },
@@ -131,8 +159,52 @@ export const CASE_01 = {
   resolution: 'Anh Phúc là người duy nhất khớp đủ năm dữ kiện. Anh đã được phân công chuyển huy hiệu sang khu vực sân khấu và đặt nó trong hộp bảo vệ; tờ ghi chú bàn giao vô tình rơi xuống gầm tủ nên mọi người tưởng huy hiệu bị mất.',
 } satisfies CaseDefinition;
 
-export const CASES: readonly CaseDefinition[] = [CASE_01];
+export const CASE_02 = {
+  id: 'case-02',
+  number: '02',
+  title: 'Bí ẩn chiếc đồng hồ cổ',
+  discoveredAt: '08:30',
+  status: 'upcoming',
+  topicBadge: 'Hình học & Đo lường chu vi, diện tích',
+  difficulty: 'Trung bình',
+  estimatedTime: '20 - 25 phút',
+  objective: {
+    initial: 'Giải mã mật thư trong tháp chuông',
+    finalRoom: 'Mở khóa buồng máy đồng hồ',
+    conclusion: 'Đối chiếu và xác định thủ phạm',
+  },
+  story: {
+    summary: 'Chiếc đồng hồ quả lắc trăm năm tuổi của bảo tàng đột nhiên dừng chạy vào lúc 08:30. Một bánh răng vàng quý giá đã bị tháo rời và cất giấu.',
+    groupLabel: 'Đội bảo tồn',
+    missingData: 'Mất bánh răng',
+  },
+  prologue: {
+    location: 'Tháp chuông Bảo tàng E·RASE',
+    time: '08:30 · Đầu buổi sáng mở cửa triển lãm',
+    background: 'Chiếc đồng hồ cổ trăm năm tuổi của bảo tàng đột ngột ngừng điểm chuông đúng 08:30 sáng. Đây là báu vật cơ khí lịch sử lưu giữ ký ức thời gian của thành phố.',
+    incident: 'Khi người thợ máy leo lên kiểm tra, bánh răng truyền động trung tâm bằng đồng mạ vàng đã biến mất! Kẻ gian để lại các sơ đồ hình học kỳ lạ đánh dấu tại các khu trưng bày.',
+    mission: [
+      'Giải mã các bài toán hình học về chu vi, diện tích để mở khóa 5 phòng trưng bày cổ vật.',
+      'Thu thập 5 mảnh dữ liệu về kích thước bánh răng và thời điểm tháo dỡ.',
+      'Xác định người trong Đội bảo tồn đã cất giấu bánh răng trước khi khách tham quan vào tháp!'
+    ]
+  },
+  rooms: CASE_01.rooms,
+  people: CASE_01.people,
+  profileFields: CASE_01.profileFields,
+  clues: CASE_01.clues,
+  logicHints: CASE_01.logicHints,
+  defaultQuestionIds: [29, 3, 7, 4, 18],
+  finalRoomIndex: 4,
+  finalPersonIndex: 1,
+  conclusionQuestion: 'Ai đã cất giấu bánh răng chiếc đồng hồ cổ?',
+  solvedDescription: 'Hồ sơ vụ án đang được cập nhật thêm chứng cứ.',
+  resolution: 'Hồ sơ đang được chuẩn bị hoàn thiện.',
+} satisfies CaseDefinition;
+
+export const CASES: readonly CaseDefinition[] = [CASE_01, CASE_02];
 
 export function getCase(caseId: string) {
   return CASES.find(caseData => caseData.id === caseId);
 }
+

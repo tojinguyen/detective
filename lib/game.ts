@@ -76,14 +76,16 @@ export function verdict(caseData: CaseDefinition, eliminated: number[], revealed
   const requiredClues = caseData.clues.map((_, index) => index);
   const sideRoomCount = caseData.rooms.filter(room => !room.final).length;
   const finalRoomName = caseData.rooms[caseData.finalRoomIndex]?.name.toLocaleLowerCase('vi') ?? 'phòng cuối';
-  if (requiredClues.some(i => !revealed.includes(i))) return { won: false, text: `Hồ sơ chưa đủ: hãy hoàn tất ${sideRoomCount} phòng và mở ${finalRoomName} trước khi đưa ra kết luận.` };
-  const comparison = comparisonFeedback(caseData, eliminated, revealed);
-  if (!comparison.aligned) return { won: false, text: comparison.text };
-  const survivors = caseData.people.map((_, index) => index).filter(index => !eliminated.includes(index));
-  if (survivors.length !== 1) return { won: false, text: `Hãy để lại đúng một nhân vật phù hợp sau khi đối chiếu đủ ${caseData.clues.length} manh mối.` };
-  if (accused === null) return { won: false, text: 'Hãy chọn nhân vật phù hợp với kết luận của bạn.' };
-  if (survivors[0] !== accused) return { won: false, text: 'Tên bạn chọn chưa trùng với hồ sơ duy nhất còn phù hợp trên bảng đối chiếu.' };
-  if (accused !== caseData.finalPersonIndex) return { won: false, text: `Dữ kiện cuối chưa khớp với kết luận này. Hãy kiểm tra lại cả ${caseData.clues.length} manh mối.` };
+  if (requiredClues.some(i => !revealed.includes(i))) {
+    return { won: false, text: `Hồ sơ chưa đủ: hãy hoàn tất ${sideRoomCount} phòng và mở ${finalRoomName} trước khi đưa ra kết luận.` };
+  }
+  if (accused === null) {
+    return { won: false, text: 'Hãy chọn nhân vật phù hợp với kết luận của bạn.' };
+  }
+  if (accused !== caseData.finalPersonIndex) {
+    const accusedPerson = caseData.people[accused];
+    return { won: false, text: `Kết luận chưa chính xác: ${accusedPerson ? accusedPerson.name : 'Nhân vật này'} không khớp với toàn bộ các manh mối đã thu thập. Hãy xem lại hồ sơ và suy luận cẩn thận hơn.` };
+  }
   return { won: true, text: caseData.resolution };
 }
 type Rational = { n: bigint; d: bigint };

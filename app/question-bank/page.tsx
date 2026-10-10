@@ -30,6 +30,7 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
+import { AppHeader } from '@/components/app-header';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
@@ -460,50 +461,23 @@ export default function QuestionBankPage() {
 
   if (!isAdmin) {
     return (
-      <main className="content-studio flex flex-col items-center justify-center min-h-screen text-center p-4">
-        <h1 className="text-2xl font-serif text-[#efdcb9] mb-2">Khu vực dành riêng cho Quản trị viên</h1>
-        <p className="text-sm text-[#9aaa9f] mb-6">Bạn đang đăng nhập với tư cách học sinh. Vui lòng đăng nhập tài khoản Admin để chỉnh sửa đề.</p>
-        <Link href="/" className="px-4 py-2 bg-[#bd965c] text-[#132228] font-bold rounded">Trở về Vụ án 01</Link>
+      <main className="min-h-screen bg-[#0d1a20] text-[#e8e4d8]">
+        <AppHeader currentView="question-bank" />
+        <div className="flex flex-col items-center justify-center p-12 text-center">
+          <h1 className="text-2xl font-serif text-[#efdcb9] mb-2">Khu vực dành riêng cho Quản trị viên</h1>
+          <p className="text-sm text-[#9aaa9f] mb-6">Bạn đang đăng nhập với tư cách học sinh. Vui lòng đăng nhập tài khoản Admin để chỉnh sửa đề.</p>
+          <Link href="/" className="px-4 py-2 bg-[#bd965c] text-[#132228] font-bold rounded">Trở về Danh mục Vụ án</Link>
+        </div>
       </main>
     );
   }
 
   return (
     <main className="min-h-screen bg-[#0d1a20] text-[#e8e4d8] font-sans">
-      {/* ==================== TOPBAR ==================== */}
-      <header className="h-16 border-b border-[#22353e] bg-[#091418] flex items-center justify-between px-6 sticky top-0 z-30 shadow-md">
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-xs font-semibold text-[#ceac79] hover:text-[#f3dfbe] transition-colors py-1.5 px-2.5 rounded-lg hover:bg-white/5"
-        >
-          <ArrowLeft size={16} /> Trở về Vụ {CASE_01.number}
-        </Link>
-        <div className="text-center">
-          <small className="block text-[10px] tracking-widest text-[#7a8f87] uppercase font-bold">
-            E·RASE · KHU VỰC BIÊN TẬP
-          </small>
-          <strong className="text-sm font-serif text-[#f2ebd9] tracking-wide">
-            Kho bài tập & Quản lý vụ án
-          </strong>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <Button
-            onClick={openCreateNew}
-            className="bg-[#243d46] hover:bg-[#2d4d58] text-[#e2edf0] border border-[#3b5a66] text-xs h-8 px-3 gap-1.5 font-medium rounded-lg shadow-sm"
-          >
-            <Plus size={15} /> Thêm bài mới
-          </Button>
-          <Button
-            onClick={exportContent}
-            title="Tải toàn bộ kho bài về máy dưới dạng JSON"
-            className="bg-[#ceac79] hover:bg-[#deb97b] text-[#0f2026] text-xs h-8 px-3 gap-1.5 font-bold rounded-lg shadow-sm"
-          >
-            <Download size={15} /> Xuất JSON
-          </Button>
-        </div>
-      </header>
+      {/* ==================== GLOBAL TOPBAR ==================== */}
+      <AppHeader currentView="question-bank" />
 
-      {/* ==================== HERO STATS ==================== */}
+      {/* ==================== HERO STATS & ACTIONS ==================== */}
       <section className="py-4 px-6 border-b border-[#22353e] bg-[#0f2128]">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-[1440px] mx-auto w-full">
           <div>
@@ -524,6 +498,21 @@ export default function QuestionBankPage() {
             <div className="px-4 py-2 bg-[#14262e] border border-[#2b414a] rounded-lg text-center min-w-[90px] shadow-sm">
               <b className="block text-lg font-bold text-[#ceac79]">{content.customQuestions.length}</b>
               <small className="text-[11px] text-[#8fa298] font-medium">Bài tự tạo</small>
+            </div>
+            <div className="flex items-center gap-2 ml-2">
+              <Button
+                onClick={openCreateNew}
+                className="bg-[#243d46] hover:bg-[#2d4d58] text-[#e2edf0] border border-[#3b5a66] text-xs h-9 px-3 gap-1.5 font-medium rounded-lg shadow-sm"
+              >
+                <Plus size={15} /> Thêm bài mới
+              </Button>
+              <Button
+                onClick={exportContent}
+                title="Tải toàn bộ kho bài về máy dưới dạng JSON"
+                className="bg-[#ceac79] hover:bg-[#deb97b] text-[#0f2026] text-xs h-9 px-3 gap-1.5 font-bold rounded-lg shadow-sm"
+              >
+                <Download size={15} /> Xuất JSON
+              </Button>
             </div>
           </div>
         </div>
