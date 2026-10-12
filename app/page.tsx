@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import katex from 'katex';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen, Trophy, Award, Play, FolderSearch } from 'lucide-react';
+import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen, Trophy, Award, Play, FolderSearch, Compass, Tag, Gem } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { AuthModal } from '@/components/auth-modal';
 import { supabase } from '@/lib/supabase';
@@ -35,7 +35,7 @@ const SPRITE_POSITIONS: Record<Direction, { idle: string; walk: string }> = {
   left: { idle: '0% 100%', walk: '33.333% 100%' },
   right: { idle: '66.667% 100%', walk: '100% 100%' },
 };
-const PROFILE_ICONS = { ruler: Ruler, clock: Clock3, card: CreditCard, package: Package, route: Route } as const;
+const PROFILE_ICONS = { ruler: Ruler, clock: Clock3, card: CreditCard, package: Package, route: Route, trophy: Trophy, compass: Compass, tag: Tag, gem: Gem } as const;
 function MathText({ value }: { value: string }) {
   return <span className="math" dangerouslySetInnerHTML={{ __html: katex.renderToString(value, { throwOnError: false, strict: 'ignore', trust: false, output: 'htmlAndMathml' }) }} />;
 }
@@ -615,12 +615,33 @@ export default function Home() {
                   {caseData.clues.map((clue, index) => <div key={clue.shortLabel} className={'evidence-filter ' + (revealed.includes(index) ? 'unlocked' : 'locked')}><span>M{index + 1}</span><b>{revealed.includes(index) ? clue.shortLabel : '?'}</b></div>)}
                 </div>
                 <div className="suspect-grid" aria-label={caseData.people.length + ' hồ sơ nhân vật'}>
-                  {caseData.people.map((profile, index) => { const isOut = eliminated.includes(index); const factsLabel = caseData.profileFields.map((field, fieldIndex) => field.label + ' ' + factText(index, fieldIndex)).join(', '); return <button key={profile.id} className={'suspect-card ' + (isOut ? 'eliminated' : '')} onClick={() => toggleEliminated(index)} aria-pressed={isOut} aria-label={(isOut ? 'Khôi phục ' : 'Đánh dấu không phù hợp ') + profile.name + ', ' + profile.role + ', ' + factsLabel}>
-                    <span className="suspect-portrait" style={{ backgroundPosition: portraitPosition(index) + '% 9%' }} aria-hidden="true" />
-                    <span className="suspect-name"><small>HỒ SƠ 0{index + 1} · {profile.role}</small><strong>{profile.name}</strong></span>
-                    <span className="suspect-data">{caseData.profileFields.map((field, fieldIndex) => { const FactIcon = PROFILE_ICONS[field.icon]; return <span className={field.fullWidth ? 'full-fact' : ''} key={field.key}><FactIcon size={14} /><b>{factText(index, fieldIndex)}</b><small>{field.label}</small></span>; })}</span>
-                    {isOut && <span className="eliminated-stamp"><X size={22} />KHÔNG KHỚP</span>}
-                  </button>; })}
+                  {caseData.people.map((profile, index) => {
+                    const isOut = eliminated.includes(index);
+                    const factsLabel = caseData.profileFields.map((field, fieldIndex) => {
+                      const unlocked = field.unlockClueIndex === undefined || revealed.includes(field.unlockClueIndex);
+                      return field.label + ' ' + (unlocked ? factText(index, fieldIndex) : 'chưa mở');
+                    }).join(', ');
+                    return <button key={profile.id} className={'suspect-card ' + (isOut ? 'eliminated' : '')} onClick={() => toggleEliminated(index)} aria-pressed={isOut} aria-label={(isOut ? 'Khôi phục ' : 'Đánh dấu không phù hợp ') + profile.name + ', ' + profile.role + ', ' + factsLabel}>
+                      <span className="suspect-portrait" style={{ backgroundPosition: portraitPosition(index) + '% 9%' }} aria-hidden="true" />
+                      <span className="suspect-name"><small>HỒ SƠ 0{index + 1} · {profile.role}</small><strong>{profile.name}</strong></span>
+                      <span className="suspect-data">{caseData.profileFields.map((field, fieldIndex) => {
+                        const FactIcon = PROFILE_ICONS[field.icon] || Tag;
+                        const unlocked = field.unlockClueIndex === undefined || revealed.includes(field.unlockClueIndex);
+                        return <span className={field.fullWidth ? 'full-fact' : ''} key={field.key}>
+                          <FactIcon size={14} />
+                          {unlocked ? (
+                            <b>{factText(index, fieldIndex)}</b>
+                          ) : (
+                            <b className="flex items-center gap-1 opacity-60 text-[11px] font-mono text-[#8fa49a]">
+                              <LockKeyhole size={11} className="text-[#deb97b]" /> ???
+                            </b>
+                          )}
+                          <small>{field.label}</small>
+                        </span>;
+                      })}</span>
+                      {isOut && <span className="eliminated-stamp"><X size={22} />KHÔNG KHỚP</span>}
+                    </button>;
+                  })}
                 </div>
                 <div className="board-actions"><Button className="secondary-button" onClick={compare}><ScanSearch size={16} />Đối chiếu</Button><Button className="gold-button conclude-button" onClick={() => { if (!won) setConclusion(''); setConclude(true); }}><Flag size={16} />Kết luận</Button></div>
                 {boardMessage && <p className="board-feedback" role="status">{boardMessage}</p>}

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import katex from 'katex';
-import { CASE_01 } from '../lib/cases.ts';
+import { CASE_01, CASE_02, CASE_03 } from '../lib/cases.ts';
 import { matchesClue, candidates, comparisonFeedback, verdict, parseArithmetic, equalsInteger, equalsArithmetic, isDetectionCorrect, isCorrectionCorrect } from '../lib/game.ts';
 import { tokeniseMath } from '../lib/math-tokenizer.ts';
 import { formatInvestigationTime, investigationReport, traceStatus } from '../lib/investigation-report.ts';
@@ -157,4 +157,38 @@ test('sizing commands never become standalone clickable tokens', () => {
   for (const token of tokens) {
     assert.doesNotThrow(() => katex.renderToString(token, { throwOnError: true, strict: 'error', trust: false }), token);
   }
+});
+
+test('CASE_02 correctly determines STEM champion Mai', () => {
+  assert.equal(CASE_02.title, 'Cuộc đua STEM — Ai là quán quân?');
+  assert.equal(CASE_02.people.length, 5);
+  // Trước M4: cả 5 thí sinh đều có cơ hội
+  assert.deepEqual(candidates(CASE_02, [0, 1, 2]), [0, 1, 2, 3, 4]);
+  // Sau M4: 4 người dẫn đầu 4 vòng được xác định, Nam không dẫn đầu vòng nào bị loại
+  assert.deepEqual(candidates(CASE_02, [0, 1, 2, 3]), [0, 1, 2, 3]);
+  // Sau M5: quy chế loại nam giới (Minh, Hùng) và loại áo đỏ (Lan) -> chỉ còn Mai
+  assert.deepEqual(candidates(CASE_02, [0, 1, 2, 3, 4]), [3]);
+  // Phán quyết: chọn Mai là chiến thắng
+  assert.equal(verdict(CASE_02, [0, 1, 2, 4], [0, 1, 2, 3, 4], 3).won, true);
+  // Chọn người khác là sai
+  assert.equal(verdict(CASE_02, [0, 1, 2, 4], [0, 1, 2, 3, 4], 0).won, false);
+});
+
+test('CASE_03 relational clues correctly identify culprit Én', () => {
+  assert.equal(CASE_03.title, 'Vụ trộm tại Phòng Nghiên cứu Đá quý');
+  assert.equal(CASE_03.people.length, 5);
+  // M1: rời đi sau 19:40 -> loại An (19:40)
+  assert.deepEqual(candidates(CASE_03, [0]), [1, 2, 3, 4]);
+  // M2: 162 < cao < 170 -> loại Bình (170cm) và Dũng (175cm) -> còn Chi (166cm) và Én (168cm)
+  assert.deepEqual(candidates(CASE_03, [0, 1]), [2, 4]);
+  // M3: tầng 3 -> cả Chi và Én đều thỏa mãn
+  assert.deepEqual(candidates(CASE_03, [0, 1, 2]), [2, 4]);
+  // M4: chứng cứ ngoại phạm của người mang Hộp huỳnh quang -> loại Chi -> chỉ còn Én
+  assert.deepEqual(candidates(CASE_03, [0, 1, 2, 3]), [4]);
+  // M5: xác nhận Én (rời đi sau 20:30 và mang Hộp mẫu đá)
+  assert.deepEqual(candidates(CASE_03, [0, 1, 2, 3, 4]), [4]);
+  // Phán quyết cho Én là chiến thắng
+  assert.equal(verdict(CASE_03, [0, 1, 2, 3], [0, 1, 2, 3, 4], 4).won, true);
+  // Phán quyết cho Chi là sai
+  assert.equal(verdict(CASE_03, [0, 1, 2, 3], [0, 1, 2, 3, 4], 2).won, false);
 });

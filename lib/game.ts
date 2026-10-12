@@ -3,6 +3,7 @@ import type { CaseDefinition, FactValue, RuleOperator } from './cases';
 function compareFact(actual: FactValue | undefined, operator: RuleOperator, expected: FactValue) {
   if (actual === undefined) return false;
   if (operator === 'eq') return actual === expected;
+  if (operator === 'neq') return actual !== expected;
   if (typeof actual === 'number' && typeof expected === 'number') {
     if (operator === 'gt') return actual > expected;
     if (operator === 'gte') return actual >= expected;
@@ -21,7 +22,11 @@ function compareFact(actual: FactValue | undefined, operator: RuleOperator, expe
 export function matchesClue(caseData: CaseDefinition, person: number, index: number) {
   const profile = caseData.people[person];
   const clue = caseData.clues[index];
-  return Boolean(profile && clue && compareFact(profile.facts[clue.rule.field], clue.rule.operator, clue.rule.value));
+  if (!profile || !clue) return false;
+  if (clue.matchPerson) {
+    return clue.matchPerson(profile, person, caseData);
+  }
+  return compareFact(profile.facts[clue.rule.field], clue.rule.operator, clue.rule.value);
 }
 
 export function candidates(caseData: CaseDefinition, revealed: number[]) {
