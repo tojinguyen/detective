@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import katex from 'katex';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen, Trophy, Award, Play, FolderSearch, Compass, Tag, Gem } from 'lucide-react';
+import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Camera, HelpCircle, X, Flag, ScanSearch, CheckCircle2, ArrowLeft, Clock3, MapPin, FileSearch, Gamepad2, CircleDot, Ruler, Package, Route, CreditCard, LogIn, LogOut, LayoutDashboard, BookOpen, Trophy, Award, Play, FolderSearch, Compass, Tag, Gem, HeartPulse, Footprints, ShieldCheck, MessageSquareQuote } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { AuthModal } from '@/components/auth-modal';
 import { supabase } from '@/lib/supabase';
@@ -35,7 +35,7 @@ const SPRITE_POSITIONS: Record<Direction, { idle: string; walk: string }> = {
   left: { idle: '0% 100%', walk: '33.333% 100%' },
   right: { idle: '66.667% 100%', walk: '100% 100%' },
 };
-const PROFILE_ICONS = { ruler: Ruler, clock: Clock3, card: CreditCard, package: Package, route: Route, trophy: Trophy, compass: Compass, tag: Tag, gem: Gem } as const;
+const PROFILE_ICONS = { ruler: Ruler, clock: Clock3, card: CreditCard, package: Package, route: Route, trophy: Trophy, compass: Compass, tag: Tag, gem: Gem, heart: HeartPulse, footprints: Footprints, shield: ShieldCheck } as const;
 function MathText({ value }: { value: string }) {
   return <span className="math" dangerouslySetInnerHTML={{ __html: katex.renderToString(value, { throwOnError: false, strict: 'ignore', trust: false, output: 'htmlAndMathml' }) }} />;
 }
@@ -661,7 +661,37 @@ export default function Home() {
               <span className="room-scene-number">PHÒNG {caseData.rooms[active].no}</span>
               <button className={'room-object-hotspot ' + (current.stage === 'done' ? 'found' : '')} onClick={() => setScreen('question')}><span>{current.stage === 'done' ? <Check size={19} /> : <Search size={19} />}</span><strong>{caseData.rooms[active].object}</strong><small>{current.stage === 'done' ? 'Xem chứng cứ đã thu thập' : 'Kiểm tra vật chứng'}</small></button>
             </div>
-            <div className="room-object-card"><span className="paper-eyebrow">{caseData.rooms[active].final ? 'CHẶNG CUỐI' : 'KHU VỰC ĐIỀU TRA'}</span><h2>{caseData.rooms[active].name}</h2><p>{caseData.rooms[active].note}</p>{caseData.rooms[active].securityWarning && <div className="security-warning"><Camera size={17} /><span>{caseData.rooms[active].securityWarning}</span></div>}<div><Button className="gold-button" onClick={() => setScreen('question')}>{current.stage === 'done' ? 'Xem chứng cứ' : 'Kiểm tra vật chứng'}<ArrowRight size={16} /></Button></div></div>
+            <div className="room-object-card">
+              <span className="paper-eyebrow">{caseData.rooms[active].final ? 'CHẶNG CUỐI' : 'KHU VỰC ĐIỀU TRA'}</span>
+              <h2>{caseData.rooms[active].name}</h2>
+              <p>{caseData.rooms[active].note}</p>
+              {caseData.rooms[active].testimonies && caseData.rooms[active].testimonies.length > 0 && (
+                <div className="my-3 flex flex-col gap-2 rounded-lg border border-[#deb97b]/30 bg-[#14232c]/90 p-3.5 text-left shadow-inner">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#deb97b]">
+                    <MessageSquareQuote size={16} />
+                    <span>Lời khai nhân chứng tại hiện trường</span>
+                  </div>
+                  <div className="flex flex-col gap-2.5">
+                    {caseData.rooms[active].testimonies.map((item, tIdx) => (
+                      <div key={tIdx} className="rounded-md bg-[#0d1720]/80 p-2.5 text-xs border border-white/5 shadow-sm">
+                        <div className="font-medium text-[#f1f5f9] mb-1 flex items-center justify-between">
+                          <span className="text-[#deb97b] font-semibold">{item.witness}</span>
+                          {item.role && <span className="text-[11px] text-[#8fa49a] italic">({item.role})</span>}
+                        </div>
+                        <p className="text-[#cbd5e1] leading-relaxed italic">{item.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {caseData.rooms[active].securityWarning && <div className="security-warning"><Camera size={17} /><span>{caseData.rooms[active].securityWarning}</span></div>}
+              <div>
+                <Button className="gold-button" onClick={() => setScreen('question')}>
+                  {current.stage === 'done' ? 'Xem chứng cứ' : 'Kiểm tra vật chứng'}
+                  <ArrowRight size={16} />
+                </Button>
+              </div>
+            </div>
           </div>}
           {active !== null && current && question && screen === 'question' && <>
             <DialogHeader className="question-heading"><div className="modal-eyebrow"><FileSearch size={22} /><span>{caseData.rooms[active].source} <i>·</i> BÀI {question.id}</span></div><DialogTitle>{current.stage === 'done' ? 'Chứng cứ đã được mở khóa.' : 'Có gì chưa đúng ở đây?'}</DialogTitle><DialogDescription>{current.stage === 'done' ? 'Phiếu Toán đã sửa giúp bạn đọc được mảnh thông tin của căn phòng này.' : 'Vật chứng bị khóa bởi một lời giải sai. Tìm lỗi đầu tiên, rồi sửa đúng để mở.'}</DialogDescription></DialogHeader>

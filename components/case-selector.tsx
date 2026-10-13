@@ -3,7 +3,7 @@
 import React from 'react';
 import { CaseDefinition, CASES } from '@/lib/cases';
 import { Button } from '@/components/ui/button';
-import { FolderSearch, Clock, MapPin, Users, Lock, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
+import { FolderSearch, Clock, MapPin, Users, Lock, CheckCircle2, ArrowRight } from 'lucide-react';
 import type { DetectiveRank } from '@/lib/scoring';
 
 interface CaseSelectorProps {
@@ -91,7 +91,7 @@ export function CaseSelector({
                 {/* Card Top Stamp & Badge */}
                 <div className="p-6 sm:p-7 pb-4">
                   <div className="flex items-center justify-between gap-3 mb-3.5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="px-2.5 py-0.5 rounded border border-[#83693f] bg-[#272115] text-[#ecd7ad] text-[10px] font-mono font-bold tracking-wider">
                         HỒ SƠ #{caseItem.number}
                       </span>
@@ -103,18 +103,14 @@ export function CaseSelector({
                     </div>
 
                     {isCompleted ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-[#2f6f4c] bg-[#123122] text-[#54c48a] text-[10px] font-semibold">
-                        <CheckCircle2 size={12} /> ĐÃ GIẢI
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-[#2f6f4c] bg-[#123122] text-[#54c48a] text-[10px] font-semibold whitespace-nowrap">
+                        <CheckCircle2 size={12} /> ĐÃ PHÁ ÁN
                       </span>
-                    ) : isAvailable ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-[#83693f] bg-[#2b2315] text-[#deb97b] text-[10px] font-semibold">
-                        <Sparkles size={11} /> ĐANG MỞ
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-[#3b474c] bg-[#1a2327] text-[#86969b] text-[10px]">
+                    ) : !isAvailable ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-[#3b474c] bg-[#1a2327] text-[#86969b] text-[10px] whitespace-nowrap">
                         <Lock size={11} /> SẮP RA MẮT
                       </span>
-                    )}
+                    ) : null}
                   </div>
 
                   <h3 className="font-serif text-xl sm:text-2xl text-[#f3ece0] font-normal mb-2 leading-snug">
@@ -127,37 +123,40 @@ export function CaseSelector({
 
                   {/* Metadata Chips */}
                   <div className="flex flex-wrap items-center gap-3.5 text-[11px] text-[#7d938b] pt-3 border-t border-[#233842]">
-                    <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <MapPin size={13} className="text-[#c7a469]" /> {caseItem.rooms.length} phòng hiện trường
                     </span>
-                    <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <Users size={13} className="text-[#c7a469]" /> {caseItem.people.length} nhân vật
                     </span>
-                    <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                       <Clock size={13} className="text-[#c7a469]" /> {caseItem.estimatedTime || '20 phút'}
                     </span>
                   </div>
                 </div>
 
                 {/* Card Footer Actions */}
-                <div className="p-4 sm:p-5 bg-[#0d181e]/90 border-t border-[#22353e] flex items-center justify-between">
-                  <div className="text-[11px] text-[#849a90]">
-                    Độ khó: <b className="text-[#e2dacb] font-medium">{caseItem.difficulty || 'Trung bình'}</b>
+                <div className="p-4 sm:p-5 bg-[#0d181e]/90 border-t border-[#22353e] flex items-center justify-between gap-3">
+                  <div className="text-[11px] text-[#849a90] whitespace-nowrap flex items-center gap-1.5 shrink-0">
+                    <span>Độ khó:</span>
+                    <span className="px-2 py-0.5 rounded bg-[#162730] border border-[#27404e] text-[#e2dacb] font-medium text-[11px] whitespace-nowrap">
+                      {caseItem.difficulty || 'Trung bình'}
+                    </span>
                   </div>
 
                   {isAvailable ? (
                     <Button
                       onClick={() => onSelectCase(caseItem)}
-                      className="gold-button text-xs font-semibold py-1.5 px-4 h-9 shadow-sm"
+                      className="gold-button text-xs font-semibold py-1.5 px-4 h-9 shadow-sm shrink-0 whitespace-nowrap"
                     >
-                      {isCompleted ? 'Khám nghiệm lại' : 'Nhận vụ án & Xem bối cảnh'}
+                      {isCompleted ? 'Khám nghiệm lại' : 'Vào phá án'}
                       <ArrowRight size={14} className="ml-1" />
                     </Button>
                   ) : (
                     <Button
                       disabled
                       variant="ghost"
-                      className="text-xs text-[#63757a] border border-[#27373e] bg-[#121c21] h-9 px-4 cursor-not-allowed"
+                      className="text-xs text-[#63757a] border border-[#27373e] bg-[#121c21] h-9 px-4 cursor-not-allowed shrink-0 whitespace-nowrap"
                     >
                       <Lock size={13} className="mr-1" /> Đang khóa hồ sơ
                     </Button>

@@ -1,7 +1,13 @@
 export type Direction = 'front' | 'back' | 'left' | 'right';
 export type FactValue = string | number;
 export type RuleOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';
-export type ProfileIcon = 'ruler' | 'clock' | 'card' | 'package' | 'route' | 'trophy' | 'compass' | 'tag' | 'gem';
+export type ProfileIcon = 'ruler' | 'clock' | 'card' | 'package' | 'route' | 'trophy' | 'compass' | 'tag' | 'gem' | 'heart' | 'footprints' | 'shield';
+
+export type WitnessTestimony = {
+  witness: string;
+  role?: string;
+  content: string;
+};
 
 export type CaseRoom = {
   no: string;
@@ -15,6 +21,7 @@ export type CaseRoom = {
   door: { x: number; y: number };
   facing: Direction;
   securityWarning?: string;
+  testimonies?: WitnessTestimony[];
 };
 
 export type CasePerson = {
@@ -268,105 +275,139 @@ export const CASE_02 = {
 export const CASE_03 = {
   id: 'case-03',
   number: '03',
-  title: 'Vụ trộm tại Phòng Nghiên cứu Đá quý',
-  discoveredAt: '20:45',
+  title: 'Ai là Hero?',
+  discoveredAt: '06:30',
   status: 'available',
-  topicBadge: 'Logic tương quan & Hệ suy luận đan xen',
-  difficulty: 'Nâng cao',
+  topicBadge: 'Logic ngoại phạm & Nhận dạng hiện trường',
+  difficulty: 'Trung bình - Khó',
   estimatedTime: '20 - 25 phút',
   objective: {
-    initial: 'Thu thập các manh mối tương quan giữa các nghi phạm',
-    finalRoom: 'Mở khóa camera hồng ngoại tại buồng an ninh 05',
-    conclusion: 'Đối chiếu các mối liên hệ và chỉ ra thủ phạm',
+    initial: 'Khám phá 5 địa điểm hiện trường để thu thập dấu vết Người Hùng',
+    finalRoom: 'Mở khóa tủ dụng cụ tại chốt dân phòng (phòng 05)',
+    conclusion: 'Đối chiếu các dấu vết và tìm ra người hùng giấu mặt',
   },
   story: {
-    summary: 'Viên pha lê quang phổ tím trong phòng nghiên cứu bị lấy cắp. 5 nhà khoa học có mặt tại tòa nhà đưa ra các dữ kiện so sánh đan xen nhau.',
-    groupLabel: 'Đội nghiên cứu',
-    missingData: 'Mất pha lê',
+    summary: 'Ba sự cố nguy hiểm trong đêm đã được một người hùng bí ẩn kịp thời xử lý an toàn rồi rời đi. Hãy giải mã các dấu vết để tìm ra người hùng!',
+    groupLabel: 'Bảng nghi phạm người hùng',
+    missingData: 'Danh tính Người Hùng',
   },
   prologue: {
-    location: 'Viện Nghiên cứu Đá quý & Khoáng sản Hoàng gia',
-    time: '20:45 · 45 phút sau khi chuông báo động kích hoạt',
-    background: 'Viên pha lê quang phổ tím - mẫu vật đo khúc xạ quý giá nhất của Viện - được bảo quản trong lồng kính hút chân không tại Phòng Thí nghiệm Tầng 3. Đúng 20:45, cảm biến quang học báo mất mẫu vật.',
-    incident: 'Camera hành lang bị che khuất một phần. Các dấu vết để lại gồm chiều cao tương đối, thứ tự rời đi, tầng lầu làm việc và thiết bị mang theo đan xen nhau giữa 5 nhân sự có mặt trong tòa nhà vào buổi tối.',
+    location: 'Khu phố An Bình · 3 điểm sự cố nguy hiểm',
+    time: '06:30 sáng · Sau đêm xảy ra sự cố',
+    background: 'Đêm qua, khu phố liên tiếp xảy ra ba sự cố nguy hiểm: biển quảng cáo chập điện, một người bán hàng rong bị ngã và một trụ đèn bị rò điện.',
+    incident: 'Sáng hôm sau, mọi người mới biết các nguy cơ đã được xử lý kịp thời. Người bị nạn an toàn, khu vực nguy hiểm được phong tỏa, nhưng người đã âm thầm giúp đỡ mọi người lại biến mất không để lại danh tính. Tin đồn về một người hùng bí ẩn nhanh chóng lan khắp khu phố. Tại mỗi hiện trường, một dấu vết khác thường đang chờ được giải mã.',
     mission: [
-      'Giải 5 bài toán nâng cao để giải mã dữ liệu hiện trường tại các phòng nghiên cứu.',
-      'Xâu chuỗi các manh mối so sánh tương quan (chiều cao tương đối, thời gian rời viện, tầng làm việc và thiết bị).',
-      'Loại trừ các đối tượng có chứng cứ ngoại phạm và vạch trần kẻ trộm viên pha lê!'
+      'Đến từng địa điểm, giải các thử thách Toán học để lấy lại dấu vết hiện trường.',
+      'Đọc lời khai của các nhân chứng tại Ngã tư khu phố để đối chiếu vị trí và nhận dạng.',
+      'Kết nối các manh mối, giải mã vật chứng tại Tủ dụng cụ và tìm ra ai là người hùng thật sự!'
     ]
   },
   rooms: [
-    { no: '01', name: 'Phòng Quang học', source: 'TẦNG 1: QUANG HỌC', object: 'Kính hiển vi phân tích', image: '/room-classroom.png', note: 'Dấu vân tay trên tủ kính phòng quang học đang chờ giải mã.', position: 'north', final: false, door: { x: 50, y: 27 }, facing: 'back' },
-    { no: '02', name: 'Phòng Cơ khí', source: 'TẦNG 2: CƠ KHÍ', object: 'Khung cửa sổ xước', image: '/room-archive.png', note: 'Vết xước trên khung cửa sổ cho manh mối về chiều cao tương đối.', position: 'west', final: false, door: { x: 24, y: 50 }, facing: 'left' },
-    { no: '03', name: 'Phòng Tinh thể', source: 'TẦNG 3: TINH THỂ', object: 'Vết bụi khoáng trên sàn', image: '/detective-room.png', note: 'Bụi khoáng huỳnh quang tiết lộ tầng làm việc của kẻ đột nhập.', position: 'east', final: false, door: { x: 76, y: 50 }, facing: 'right' },
-    { no: '04', name: 'Kho Mẫu vật', source: 'TẦNG 3: KHO MẪU', object: 'Nhật ký xuất kho thiết bị', image: '/room-archive.png', note: 'Bản kê thiết bị xác nhận chứng cứ ngoại phạm của một nghi phạm.', position: 'south', final: false, door: { x: 50, y: 73 }, facing: 'front' },
-    { no: '05', name: 'Buồng An ninh', source: 'CHẶNG CUỐI: BUỒNG AN NINH', object: 'Băng ghi hình hồng ngoại', image: '/room-security.png', note: 'Khôi phục hình ảnh hồng ngoại cửa sau để xác định thủ phạm.', position: 'security', final: true, door: { x: 76, y: 73 }, facing: 'front', securityWarning: 'Tín hiệu camera hồng ngoại bị nhiễu. Sửa biểu thức ma trận quang học để lấy hình ảnh cuối cùng.' },
+    { no: '01', name: 'Bảng quảng cáo', source: 'HIỆN TRƯỜNG 1: BẢNG QUẢNG CÁO', object: 'Mảnh vải ở tủ điện', image: '/room-classroom.png', note: 'Biển quảng cáo chập điện đã được ngắt cầu dao; cạnh tủ điện vướng một mảnh vải.', position: 'north', final: false, door: { x: 50, y: 27 }, facing: 'back' },
+    { no: '02', name: 'Điểm sơ cứu', source: 'HIỆN TRƯỜNG 2: ĐIỂM SƠ CỨU', object: 'Băng gạc & nẹp sơ cứu', image: '/room-archive.png', note: 'Người bán hàng rong bị ngã đã được xử lý chấn thương và băng bó đúng phương pháp.', position: 'west', final: false, door: { x: 24, y: 50 }, facing: 'left' },
+    { no: '03', name: 'Cột đèn đường', source: 'HIỆN TRƯỜNG 3: CỘT ĐÈN ĐƯỜNG', object: 'Dấu giày trên nền đất', image: '/detective-room.png', note: 'Trụ đèn rò điện đã được phong tỏa an toàn; dưới chân cột đèn còn in rõ dấu giày.', position: 'east', final: false, door: { x: 76, y: 50 }, facing: 'right' },
+    {
+      no: '04',
+      name: 'Ngã tư khu phố',
+      source: 'ĐỊA ĐIỂM 4: NGÃ TƯ KHU PHỐ',
+      object: 'Lời khai nhân chứng',
+      image: '/room-archive.png',
+      note: 'Các nhân chứng có mặt gần ngã tư vào thời điểm xảy ra sự cố cung cấp những thông tin quan trọng.',
+      position: 'south',
+      final: false,
+      door: { x: 50, y: 73 },
+      facing: 'front',
+      testimonies: [
+        {
+          witness: 'Bà Tư',
+          role: 'Bán hủ tíu gõ',
+          content: '“Tôi thấy rõ một người mặc đồ xanh đậm chạy xe máy đến gần cột đèn rồi xuống sửa. Tôi nghĩ là anh công an Dũng vì anh hay tuần tra khu này.”'
+        },
+        {
+          witness: 'Anh Minh',
+          role: 'Người đi xe máy ngang qua',
+          content: '“Tôi nhìn thấy một người mặc áo xanh đen, đi bộ nhanh về phía bảng quảng cáo. Trông rất giống bác bảo vệ Hùng, vì bác hay tuần tra khu này vào ban đêm.”'
+        }
+      ]
+    },
+    {
+      no: '05',
+      name: 'Tủ dụng cụ',
+      source: 'CHẶNG CUỐI: TỦ DỤNG CỤ',
+      object: 'Chiếc đèn pin kim loại',
+      image: '/room-security.png',
+      note: 'Tủ chứa đồ nghề tại chốt bảo vệ dân phòng có chứa vật dụng quan trọng của người hùng.',
+      position: 'security',
+      final: true,
+      door: { x: 76, y: 73 },
+      facing: 'front',
+      securityWarning: 'Tủ dụng cụ bị khóa mật mã cơ khí. Giải bài toán để mở ngăn khóa và kiểm tra dấu vết trên đèn pin.'
+    },
   ],
   people: [
-    { id: 'an', name: 'Tiến sĩ An', role: 'Chuyên gia Quang học', color: '#5b8296', facts: { height: 162, departed: '19:40', floor: 'Tầng 1', device: 'Kính lúp', route: 'Cửa sảnh' } },
-    { id: 'binh', name: 'Kỹ sư Bình', role: 'Kỹ sư Cơ khí chính xác', color: '#a07c55', facts: { height: 170, departed: '20:05', floor: 'Tầng 2', device: 'Cặp tài liệu', route: 'Cầu thang' } },
-    { id: 'chi', name: 'Thạc sĩ Chi', role: 'Nhà nghiên cứu Tinh thể', color: '#9b6c88', facts: { height: 166, departed: '20:20', floor: 'Tầng 3', device: 'Hộp huỳnh quang', route: 'Cầu thang' } },
-    { id: 'dung', name: 'Chuyên viên Dũng', role: 'Kỹ thuật viên Quang phổ', color: '#688c6e', facts: { height: 175, departed: '20:15', floor: 'Tầng 2', device: 'Đèn cực tím', route: 'Thang máy' } },
-    { id: 'en', name: 'Giám sát Én', role: 'Thanh tra Khoáng sản', color: '#b8944d', facts: { height: 168, departed: '20:35', floor: 'Tầng 3', device: 'Hộp mẫu đá', route: 'Cửa sau' } },
+    { id: 'hung', name: 'Bác Hùng', role: 'Bảo vệ', color: '#2563eb', facts: { job: 'Bảo vệ', outfit: 'Xanh đen', firstAid: 'Đã học', vehicle: 'Đi bộ', shoeSize: 41 } },
+    { id: 'dung', name: 'Anh Dũng', role: 'Công an', color: '#16a34a', facts: { job: 'Công an', outfit: 'Xanh lá đậm', firstAid: 'Chuyên nghiệp', vehicle: 'Xe máy', shoeSize: 42 } },
+    { id: 'lan', name: 'Cô Lan', role: 'Giáo viên', color: '#eab308', facts: { job: 'Giáo viên', outfit: 'Màu kem', firstAid: 'Đã học', vehicle: 'Xe đạp điện', shoeSize: 37 } },
+    { id: 'vu', name: 'Anh Vũ', role: 'Ca sĩ', color: '#9333ea', facts: { job: 'Ca sĩ', outfit: 'Nhiều màu', firstAid: 'Chưa học', vehicle: 'Ô tô', shoeSize: 42 } },
+    { id: 'phong', name: 'Chú Phong', role: 'Thợ điện', color: '#ea580c', facts: { job: 'Thợ điện', outfit: 'Cam phản quang', firstAid: 'Đã học', vehicle: 'Xe chuyên dụng', shoeSize: 39 } },
   ],
   profileFields: [
-    { key: 'departed', label: 'Giờ rời viện', icon: 'clock', unlockClueIndex: 0 },
-    { key: 'height', label: 'Chiều cao', icon: 'ruler', suffix: ' cm', unlockClueIndex: 1 },
-    { key: 'floor', label: 'Tầng làm việc', icon: 'package', unlockClueIndex: 2 },
-    { key: 'device', label: 'Thiết bị mang theo', icon: 'card', unlockClueIndex: 3 },
-    { key: 'route', label: 'Lối ra', icon: 'route', fullWidth: true, unlockClueIndex: 4 },
+    { key: 'outfit', label: 'Trang phục', icon: 'card', unlockClueIndex: 0 },
+    { key: 'firstAid', label: 'Sơ cứu', icon: 'heart', unlockClueIndex: 1 },
+    { key: 'shoeSize', label: 'Cỡ giày', icon: 'footprints', unlockClueIndex: 2 },
+    { key: 'vehicle', label: 'Di chuyển', icon: 'compass', unlockClueIndex: 3 },
+    { key: 'job', label: 'Nghề nghiệp', icon: 'tag', fullWidth: true },
   ],
   clues: [
     {
-      text: 'Dấu vân tay trên tủ kính: Kẻ đột nhập rời khỏi viện nghiên cứu muộn hơn người làm việc ở Tầng 1 (Tiến sĩ An - 19:40).',
-      shortLabel: 'Rời đi sau 19:40',
-      unlockedNote: '✓ Loại trừ Tiến sĩ An (19:40)',
-      rule: { field: 'departed', operator: 'gt', value: '19:40' },
-      matchPerson: (p) => p.facts.departed > '19:40',
+      text: 'Bảng quảng cáo: Mảnh vải tối màu mắc ở cạnh tủ điện.',
+      shortLabel: 'Mảnh vải tối màu',
+      unlockedNote: '✓ Loại Chú Phong (đồng phục cam phản quang)',
+      rule: { field: 'outfit', operator: 'neq', value: 'Cam phản quang' },
+      matchPerson: (p) => p.facts.outfit !== 'Cam phản quang',
     },
     {
-      text: 'Vết xước khung cửa sổ: Thủ phạm thấp hơn người mang Cặp tài liệu (Kỹ sư Bình - 170 cm), nhưng cao hơn người rời đi sớm nhất (An - 162 cm).',
-      shortLabel: '162 cm < Cao < 170 cm',
-      unlockedNote: '✓ Loại Kỹ sư Bình (170cm) và Chuyên viên Dũng (175cm)',
-      rule: { field: 'height', operator: 'lt', value: 170 },
-      matchPerson: (p) => Number(p.facts.height) > 162 && Number(p.facts.height) < 170,
+      text: 'Điểm sơ cứu: Người hùng đã được huấn luyện sơ cứu.',
+      shortLabel: 'Đã học sơ cứu',
+      unlockedNote: '✓ Loại Anh Vũ (chưa học sơ cứu)',
+      rule: { field: 'firstAid', operator: 'neq', value: 'Chưa học' },
+      matchPerson: (p) => p.facts.firstAid !== 'Chưa học',
     },
     {
-      text: 'Bụi khoáng huỳnh quang: Dấu vết chỉ xuất hiện tại tầng làm việc cao hơn Tầng 2.',
-      shortLabel: 'Làm việc ở Tầng 3',
-      unlockedNote: '✓ Thủ phạm làm việc tại Tầng 3 (Chi hoặc Én)',
-      rule: { field: 'floor', operator: 'eq', value: 'Tầng 3' },
-      matchPerson: (p) => p.facts.floor === 'Tầng 3',
+      text: 'Cột đèn đường: Dấu giày dài khoảng 27–28 cm (tương đương cỡ giày từ 41 trở lên).',
+      shortLabel: 'Dấu giày 27–28 cm (cỡ ≥ 41)',
+      unlockedNote: '✓ Loại Cô Lan (cỡ 37) và Chú Phong (cỡ 39)',
+      rule: { field: 'shoeSize', operator: 'gte', value: 41 },
+      matchPerson: (p) => Number(p.facts.shoeSize) >= 41,
     },
     {
-      text: 'Camera sảnh số 3: Người mang Hộp huỳnh quang (Thạc sĩ Chi) có chứng cứ ngoại phạm do đang kiểm định mẫu lúc 20:20.',
-      shortLabel: 'Không mang Hộp huỳnh quang',
-      unlockedNote: '✓ Loại trừ Thạc sĩ Chi',
-      rule: { field: 'device', operator: 'neq', value: 'Hộp huỳnh quang' },
-      matchPerson: (p) => p.facts.device !== 'Hộp huỳnh quang',
+      text: 'Ngã tư khu phố: Đơn vị xác nhận Anh Dũng đang làm nhiệm vụ đột xuất ở nơi khác vào thời điểm xảy ra sự cố.',
+      shortLabel: 'Dũng có ngoại phạm',
+      unlockedNote: '✓ Loại Anh Dũng (ở nơi khác)',
+      rule: { field: 'job', operator: 'neq', value: 'Công an' },
+      matchPerson: (p) => p.id !== 'dung',
     },
     {
-      text: 'Hình ảnh hồng ngoại buồng an ninh: Thủ phạm rời đi sau 20:30 và mang theo Hộp mẫu đá.',
-      shortLabel: 'Sau 20:30 & Hộp mẫu đá',
-      unlockedNote: '✓ Dữ kiện quyết định: Giám sát Én',
-      rule: { field: 'device', operator: 'eq', value: 'Hộp mẫu đá' },
-      matchPerson: (p) => p.facts.departed > '20:30' && p.facts.device === 'Hộp mẫu đá',
+      text: 'Tủ dụng cụ: Đèn pin có vết khắc chữ ‘H’ và dấu hàn đặc trưng của bác bảo vệ.',
+      shortLabel: 'Đèn pin khắc chữ H',
+      unlockedNote: '✓ Xác nhận danh tính Người Hùng: Bác Hùng',
+      rule: { field: 'name', operator: 'eq', value: 'Bác Hùng' },
+      matchPerson: (p) => p.id === 'hung',
     },
   ],
   logicHints: [
-    'M1 loại trừ Tiến sĩ An vì An rời đi lúc 19:40.',
-    'M2: Thủ phạm thấp hơn Bình (170 cm) và cao hơn 162 cm. Điều này loại Bình (170 cm) và Dũng (175 cm). Chỉ còn Chi (166 cm) và Én (168 cm).',
-    'M3 xác nhận cả Chi và Én đều làm việc ở Tầng 3.',
-    'M4: Thạc sĩ Chi có chứng cứ ngoại phạm vì mang Hộp huỳnh quang. Điều này loại trừ Chi.',
-    'M5 trích xuất hình ảnh hồng ngoại: Thủ phạm rời đi lúc 20:35 và mang theo Hộp mẫu đá.',
-    'Giám sát Én là thủ phạm duy nhất thỏa mãn toàn bộ các manh mối tương quan!',
+    'M1 tìm thấy mảnh vải tối màu ở tủ điện, loại bỏ Chú Phong vì đồng phục của chú màu cam phản quang.',
+    'M2 cho thấy người hùng đã được huấn luyện sơ cứu, loại trừ Anh Vũ (ca sĩ, chưa học sơ cứu).',
+    'M3 dấu giày dài 27–28 cm (tương ứng cỡ giày 41–42), loại Cô Lan (cỡ 37) và Chú Phong (cỡ 39).',
+    'M4 kết hợp lời khai nhân chứng và xác nhận ngoại phạm: Anh Dũng đang làm nhiệm vụ nơi khác, loại Anh Dũng.',
+    'M5 chiếc đèn pin có khắc chữ "H" và dấu hàn đặc trưng xác nhận Bác Hùng là Người Hùng giấu mặt!',
   ],
   defaultQuestionIds: [29, 3, 7, 4, 18],
   finalRoomIndex: 4,
-  finalPersonIndex: 4,
-  conclusionQuestion: 'Ai là người đã lấy cắp viên pha lê quang phổ tím?',
-  solvedDescription: 'Bạn đã xâu chuỗi toàn bộ hệ thống manh mối đan xen và vạch trần thủ phạm!',
-  resolution: 'Giám sát Én chính là thủ phạm! Qua các manh mối đan xen: thủ phạm rời đi sau 19:40 (loại An), có chiều cao nằm trong khoảng 163 - 169 cm (loại Bình 170cm và Dũng 175cm), làm việc ở Tầng 3. Thạc sĩ Chi có chứng cứ ngoại phạm vì mang Hộp huỳnh quang. Giám sát Én (cao 168 cm, Tầng 3, rời đi lúc 20:35 mang theo Hộp mẫu đá) là người duy nhất khớp toàn bộ các dữ kiện điều tra!',
+  finalPersonIndex: 0,
+  conclusionQuestion: 'Ai là người hùng giấu mặt của khu phố?',
+  solvedDescription: 'Bạn đã thu thập đủ 5 manh mối và xác định chính xác người hùng giấu mặt!',
+  resolution: 'Bác Hùng (Bảo vệ) chính là Người Hùng thầm lặng của khu phố! Đêm qua khi tuần tra, bác đã kịp thời ngắt cầu dao biển quảng cáo chập điện (để lại mảnh vải tối màu xanh đen), sơ cứu người bán hàng rong bị ngã, rào chắn cột đèn rò điện an toàn (in dấu giày cỡ 41), và để lại chiếc đèn pin quen thuộc có khắc chữ "H" trong tủ dụng cụ chốt trực.',
 } satisfies CaseDefinition;
 
 export const CASES: readonly CaseDefinition[] = [CASE_01, CASE_02, CASE_03];
