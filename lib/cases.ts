@@ -68,7 +68,7 @@ export type CaseDefinition = {
   discoveredAt: string;
   status?: 'available' | 'upcoming';
   topicBadge?: string;
-  difficulty?: 'Dễ' | 'Trung bình' | 'Nâng cao';
+  difficulty?: 'Dễ' | 'Trung bình' | 'Khó' | 'Trung bình - Khó' | 'Nâng cao';
   estimatedTime?: string;
   objective: {
     initial: string;
@@ -94,7 +94,7 @@ export type CaseDefinition = {
   resolution: string;
 };
 
-export const CASE_01 = {
+export const CASE_01: CaseDefinition = {
   id: 'case-01',
   number: '01',
   title: 'Chiếc huy hiệu biến mất',
@@ -168,7 +168,7 @@ export const CASE_01 = {
   resolution: 'Anh Phúc là người duy nhất khớp đủ năm dữ kiện. Anh đã được phân công chuyển huy hiệu sang khu vực sân khấu và đặt nó trong hộp bảo vệ; tờ ghi chú bàn giao vô tình rơi xuống gầm tủ nên mọi người tưởng huy hiệu bị mất.',
 } satisfies CaseDefinition;
 
-export const CASE_02 = {
+export const CASE_02: CaseDefinition = {
   id: 'case-02',
   number: '02',
   title: 'Cuộc đua STEM — Ai là quán quân?',
@@ -272,7 +272,7 @@ export const CASE_02 = {
   resolution: 'Mai (Lớp 7D) chính là Quán quân của Cuộc đua STEM! Sau 4 vòng thi, bốn thí sinh dẫn đầu gồm: Minh (Vòng 1), Lan (Vòng 2), Hùng (Vòng 3) và Mai (Vòng 4). Nam không dẫn đầu vòng nào nên bị loại. Theo quy chế chung cuộc tại chặng 5, quán quân không phải nam giới (loại Minh và Hùng), không mặc áo đỏ (loại Lan). Mai là người duy nhất thỏa mãn tất cả tiêu chí!',
 } satisfies CaseDefinition;
 
-export const CASE_03 = {
+export const CASE_03: CaseDefinition = {
   id: 'case-03',
   number: '03',
   title: 'Ai là Hero?',

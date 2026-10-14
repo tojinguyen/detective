@@ -91,7 +91,7 @@
     "hint": "Muốn giữ hai vế bằng nhau, hãy trừ 1/2 ở cả hai vế.",
     "explanation": "Trừ 1/2 ở hai vế: x = −6/7 − 1/2 = −19/14.",
     "repairLabel": "Thay dấu đã chọn bằng dấu đúng.",
-    "difficulty": null,
+    "difficulty": "Dễ",
     "givenLine": 2,
     "bad": [
       "x + \\frac{1}{2} = -\\frac{6}{7}",

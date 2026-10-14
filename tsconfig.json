@@ -31,5 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "worker", "db"]
+  "exclude": ["node_modules", "worker", "db", "db/**"]
 }

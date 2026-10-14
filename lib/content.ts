@@ -33,7 +33,7 @@ export const QUESTION_BANK = rawQuestions as Question[];
 export type LocalContent = {
   customQuestions: Question[];
   questionOverrides: Question[];
-  hiddenQuestionIds: number[];
+  hiddenQuestionIds?: number[];
   caseQuestionIds: Record<string, number[]>;
 };
 
@@ -44,7 +44,6 @@ const STORAGE_KEY = 'erase-content-studio-v1';
 export const DEFAULT_LOCAL_CONTENT: LocalContent = {
   customQuestions: [],
   questionOverrides: [],
-  hiddenQuestionIds: [],
   caseQuestionIds: { [CASE_01.id]: [...CASE_01.defaultQuestionIds] },
 };
 
@@ -75,7 +74,6 @@ export function readLocalContent(): LocalContent {
     return {
       customQuestions: Array.isArray(parsed?.customQuestions) ? parsed.customQuestions : [],
       questionOverrides: Array.isArray(parsed?.questionOverrides) ? parsed.questionOverrides : [],
-      hiddenQuestionIds: Array.isArray(parsed?.hiddenQuestionIds) ? parsed.hiddenQuestionIds.map(Number) : [],
       caseQuestionIds: { ...storedAssignments, [CASE_01.id]: case01Ids },
     };
   } catch {
@@ -87,13 +85,12 @@ export function writeLocalContent(content: LocalContent) {
   if (typeof window !== 'undefined') window.localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
 }
 
-export function allQuestions(content: LocalContent, includeHidden = false) {
+export function allQuestions(content: LocalContent) {
   const merged = new Map<number, Question>();
   QUESTION_BANK.forEach(question => merged.set(question.id, question));
   content.customQuestions.forEach(question => merged.set(question.id, question));
   content.questionOverrides.forEach(question => merged.set(question.id, question));
-  const questions = [...merged.values()];
-  return includeHidden ? questions : questions.filter(question => !content.hiddenQuestionIds.includes(question.id));
+  return [...merged.values()];
 }
 
 export function questionIdsForCase(content: LocalContent, caseData: CaseDefinition) {

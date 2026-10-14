@@ -17,7 +17,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { candidates, comparisonFeedback, verdict, isDetectionCorrect, isCorrectionCorrect } from '@/lib/game';
 import { CASE_01, CASES, getCase, type Direction, type CaseDefinition } from '@/lib/cases';
-import { defaultQuestionsForCase, questionsForCase, readLocalContent, type Question } from '@/lib/content';
+import { defaultQuestionsForCase, questionsForCase, readLocalContent, writeLocalContent, QUESTION_BANK, type Question } from '@/lib/content';
+import { fetchQuestionsFromDb } from '@/lib/questions-db';
 import { tokeniseMath } from '@/lib/latex-question-parser';
 import { formatInvestigationTime, investigationReport, traceStatus, TRACE_STATUS_LABELS, type InvestigationRecord } from '@/lib/investigation-report';
 import { evaluateRank, type DetectiveRank, type CaseScoreBreakdown } from '@/lib/scoring';
@@ -58,7 +59,7 @@ export default function Home() {
     return [];
   });
 
-  const caseData = (selectedCaseId ? getCase(selectedCaseId) : null) || CASE_01;
+  const caseData: CaseDefinition = (selectedCaseId ? getCase(selectedCaseId) : null) || CASE_01;
 
   const [tab, setTab] = useState('rooms');
   const [work, setWork] = useState<Work[]>(() => getInitialWork(caseData));
@@ -114,7 +115,8 @@ export default function Home() {
   const allEvidenceDone = work.every(w => w.stage === 'done');
   const current = active === null ? null : work[active];
   const question = active === null ? null : questions[active];
-  const fullSearch = question?.difficulty === 'Trung bình' || question?.difficulty === 'Khó';
+  const isEasyWithGivenLine = question?.difficulty === 'Dễ' && Boolean(question?.givenLine);
+  const fullSearch = !isEasyWithGivenLine;
   const nearbyRoom = caseData.rooms.findIndex(room => Math.hypot(player.x - room.door.x, player.y - room.door.y) <= 10);
   const sideRoomCount = caseData.rooms.filter(room => !room.final).length;
   const preFinalCandidates = candidates(caseData, caseData.clues.map((_, index) => index).filter(index => index !== caseData.finalRoomIndex)).length;
@@ -291,9 +293,26 @@ export default function Home() {
   }, [isStarted, won, active]);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setQuestions(questionsForCase(readLocalContent(), caseData)));
-    return () => cancelAnimationFrame(frame);
-  }, []);
+    const initial = readLocalContent();
+    setQuestions(questionsForCase(initial, caseData));
+
+    fetchQuestionsFromDb().then(dbQuestions => {
+      if (dbQuestions.length > 0) {
+        const defaultIds = new Set(QUESTION_BANK.map(q => q.id));
+        const cloudCustom = dbQuestions.filter(q => !defaultIds.has(q.id));
+        const cloudOverrides = dbQuestions.filter(q => defaultIds.has(q.id));
+        const nextContent = {
+          ...initial,
+          customQuestions: cloudCustom,
+          questionOverrides: cloudOverrides,
+        };
+        writeLocalContent(nextContent);
+        setQuestions(questionsForCase(nextContent, caseData));
+      }
+    }).catch(err => {
+      console.warn('Không thể nạp đề từ Cloud:', err);
+    });
+  }, [caseData]);
 
 
   function updateWork(patch: Partial<Work>) {
@@ -697,8 +716,8 @@ export default function Home() {
             <DialogHeader className="question-heading"><div className="modal-eyebrow"><FileSearch size={22} /><span>{caseData.rooms[active].source} <i>·</i> BÀI {question.id}</span></div><DialogTitle>{current.stage === 'done' ? 'Chứng cứ đã được mở khóa.' : 'Có gì chưa đúng ở đây?'}</DialogTitle><DialogDescription>{current.stage === 'done' ? 'Phiếu Toán đã sửa giúp bạn đọc được mảnh thông tin của căn phòng này.' : 'Vật chứng bị khóa bởi một lời giải sai. Tìm lỗi đầu tiên, rồi sửa đúng để mở.'}</DialogDescription></DialogHeader>
             {current.stage !== 'done' ? <>
               <div className="question-progress-row"><div className="math-stages"><span className={current.stage === 'detect' ? 'active' : 'finished'}>{current.stage === 'repair' ? <Check size={13} /> : <b>1</b>} Tìm lỗi</span><span className="stage-line" /><span className={current.stage === 'repair' ? 'active' : ''}><b>2</b> Sửa lỗi</span><span className="stage-line" /><span><LockKeyhole size={13} /> Manh mối</span></div><span className="investigation-timer" aria-label={'Thời gian điều tra ' + formatInvestigationTime(totalSeconds)}><Clock3 size={14} /><small>THỜI GIAN ĐIỀU TRA</small><b>{formatInvestigationTime(totalSeconds)}</b></span></div>
-              <div className={'worksheet ' + (fullSearch ? 'scan-mode' : '')}><div className="worksheet-caption"><span>BÀI CÓ LỖI</span><span>{!fullSearch && question.givenLine ? 'Lỗi bắt đầu ở dòng ' + question.givenLine : 'Truy tìm lỗi sai đầu tiên'}</span></div><div className="equations">{question.bad.map((line, r) => { const errorRow = question.errorLine ?? 1; const tokens = fullSearch ? (r === errorRow ? question.segments : tokeniseMath(line)) : r === errorRow ? question.segments : null; const interactive = current.stage === 'detect' && tokens !== null; return <div className={'equation-row ' + (!fullSearch && r === errorRow && question.givenLine ? 'given-line' : '')} key={r}><span className="line-number">{r + 1}</span><div className="equation-content">{tokens ? <>{line.trim().startsWith('=') && tokens[0] !== '=' && <MathText value="=" />}{tokens.map((token, t) => interactive ? <button className={'math-token ' + (current.selection === r + '-' + t ? 'chosen' : '')} key={t} aria-pressed={current.selection === r + '-' + t} aria-label={'Dòng ' + (r + 1) + ', phần ' + (t + 1) + ': ' + token} onClick={() => updateWork({ selection: r + '-' + t, message: '' })}><MathText value={token} /></button> : <span className={'math-token fixed ' + (current.selection === r + '-' + t ? 'chosen' : '')} key={t}><MathText value={token} /></span>)}</> : <MathText value={line} />}</div></div>; })}</div></div>
-              {current.stage === 'detect' ? <div className="question-action"><p>{fullSearch ? 'Tìm xem lời giải bắt đầu sai từ đâu, rồi sửa lại từ đó.' : 'Chọn số, dấu hoặc phần biến đổi sai trên dòng ' + (question.givenLine ?? (question.errorLine ?? 1) + 1) + '.'}</p><Button className="gold-button" onClick={detect}>Kiểm tra vị trí<ArrowRight size={16} /></Button></div> : <form className="repair-form" onSubmit={e => { e.preventDefault(); repair(); }}><label className="repair-label" htmlFor="repair-answer">{question.repairLabel}</label>{question.kind === 'symbol' ? <RadioGroup className="symbol-choices" value={current.answer} onValueChange={value => updateWork({ answer: value, message: '' })} aria-label="Chọn dấu thay thế">{[{ v: '+', label: '+', name: 'Cộng' }, { v: '-', label: '−', name: 'Trừ' }, { v: '*', label: '×', name: 'Nhân' }, { v: '/', label: ':', name: 'Chia' }].map(symbol => <label className={'symbol-choice ' + (current.answer === symbol.v ? 'selected' : '')} key={symbol.v}><RadioGroupItem value={symbol.v} id={'symbol-' + symbol.v} aria-label={symbol.name} /><span>{symbol.label}</span></label>)}</RadioGroup> : question.kind === 'choice' && question.options?.length ? <RadioGroup className="expression-choices" value={current.answer} onValueChange={value => updateWork({ answer: value, message: '' })} aria-label="Chọn phép biến đổi đúng">{question.options.map(option => <label className={'expression-choice ' + (current.answer === option.key ? 'selected' : '')} key={option.key}><RadioGroupItem value={option.key} id={'choice-' + option.key} /><b>{option.key}</b><MathText value={option.value} /></label>)}</RadioGroup> : <><Input id="repair-answer" className="math-input" value={current.answer} onChange={e => updateWork({ answer: e.target.value, message: '' })} autoComplete="off" maxLength={100} placeholder={question.kind === 'value' ? 'Nhập giá trị đúng…' : 'Nhập bước tính đúng…'} /><small className="input-help">{question.kind === 'expression' ? 'Dùng +, −, *, : và ngoặc. Chấp nhận các cách tính tương đương.' : 'Bạn có thể nhập số hoặc một biểu thức có cùng giá trị.'}</small></>}<Button type="submit" className="gold-button">Xác nhận cách sửa<Check size={16} /></Button></form>}
+              <div className={'worksheet ' + (fullSearch ? 'scan-mode' : '')}><div className="worksheet-caption"><span>BÀI CÓ LỖI</span><span>{isEasyWithGivenLine ? 'Lỗi bắt đầu ở dòng ' + question.givenLine : 'Truy tìm lỗi sai đầu tiên'}</span></div><div className="equations">{question.bad.map((line, r) => { const errorRow = question.errorLine ?? 1; const tokens = fullSearch ? (r === errorRow ? question.segments : tokeniseMath(line)) : r === errorRow ? question.segments : null; const interactive = current.stage === 'detect' && tokens !== null; return <div className={'equation-row ' + (isEasyWithGivenLine && r === errorRow ? 'given-line' : '')} key={r}><span className="line-number">{r + 1}</span><div className="equation-content">{tokens ? <>{line.trim().startsWith('=') && tokens[0] !== '=' && <MathText value="=" />}{tokens.map((token, t) => interactive ? <button className={'math-token ' + (current.selection === r + '-' + t ? 'chosen' : '')} key={t} aria-pressed={current.selection === r + '-' + t} aria-label={'Dòng ' + (r + 1) + ', phần ' + (t + 1) + ': ' + token} onClick={() => updateWork({ selection: r + '-' + t, message: '' })}><MathText value={token} /></button> : <span className={'math-token fixed ' + (current.selection === r + '-' + t ? 'chosen' : '')} key={t}><MathText value={token} /></span>)}</> : <MathText value={line} />}</div></div>; })}</div></div>
+              {current.stage === 'detect' ? <div className="question-action"><p>{isEasyWithGivenLine ? 'Chọn số, dấu hoặc phần biến đổi sai trên dòng ' + question.givenLine + '.' : 'Tìm xem lời giải bắt đầu sai từ dòng nào, chọn vị trí sai đầu tiên rồi sửa lại cho đúng.'}</p><Button className="gold-button" onClick={detect}>Kiểm tra vị trí<ArrowRight size={16} /></Button></div> : <form className="repair-form" onSubmit={e => { e.preventDefault(); repair(); }}><label className="repair-label" htmlFor="repair-answer">{question.repairLabel}</label>{question.kind === 'symbol' ? <RadioGroup className="symbol-choices" value={current.answer} onValueChange={value => updateWork({ answer: value, message: '' })} aria-label="Chọn dấu thay thế">{[{ v: '+', label: '+', name: 'Cộng' }, { v: '-', label: '−', name: 'Trừ' }, { v: '*', label: '×', name: 'Nhân' }, { v: '/', label: ':', name: 'Chia' }].map(symbol => <label className={'symbol-choice ' + (current.answer === symbol.v ? 'selected' : '')} key={symbol.v}><RadioGroupItem value={symbol.v} id={'symbol-' + symbol.v} aria-label={symbol.name} /><span>{symbol.label}</span></label>)}</RadioGroup> : question.kind === 'choice' && question.options?.length ? <RadioGroup className="expression-choices" value={current.answer} onValueChange={value => updateWork({ answer: value, message: '' })} aria-label="Chọn phép biến đổi đúng">{question.options.map(option => <label className={'expression-choice ' + (current.answer === option.key ? 'selected' : '')} key={option.key}><RadioGroupItem value={option.key} id={'choice-' + option.key} /><b>{option.key}</b><MathText value={option.value} /></label>)}</RadioGroup> : <><Input id="repair-answer" className="math-input" value={current.answer} onChange={e => updateWork({ answer: e.target.value, message: '' })} autoComplete="off" maxLength={100} placeholder={question.kind === 'value' ? 'Nhập giá trị đúng…' : 'Nhập bước tính đúng…'} /><small className="input-help">{question.kind === 'expression' ? 'Dùng +, −, *, : và ngoặc. Chấp nhận các cách tính tương đương.' : 'Bạn có thể nhập số hoặc một biểu thức có cùng giá trị.'}</small></>}<Button type="submit" className="gold-button">Xác nhận cách sửa<Check size={16} /></Button></form>}
               {current.message && <p className={'math-feedback ' + (current.stage === 'repair' && current.repairMisses === 0 ? 'encourage' : '')} role="status">{current.message}</p>}
               {current.hintOpened ? <div className="math-hint"><Lightbulb size={18} /><p>{question.hint}</p></div> : <button className="hint-link" onClick={() => updateWork({ hintOpened: true })}><Lightbulb size={15} /> Cần một gợi ý nhỏ?</button>}
             </> : <div className="solved-content"><div className="received-clue"><span className="paper-eyebrow">MANH MỐI M{active + 1} · {caseData.rooms[active].source}</span><p>{caseData.clues[active].text}</p><span><CheckCircle2 size={15} /> Đã thêm vào bảng đối chiếu</span></div><details className="correct-solution"><summary>Xem lại cách sửa phiếu</summary><p>{question.explanation}</p><div className="correct-lines">{question.correct.map((line, i) => <div key={i}><MathText value={line} /></div>)}</div></details><div className="solved-actions"><Button className="gold-button" onClick={showBoard}>{caseData.rooms[active].final ? <><Flag size={17} />Đi đến kết luận</> : <><Users size={17} />Đối chiếu hồ sơ nhân vật</>}<ArrowRight size={16} /></Button><Button className="quiet-paper-button" variant="ghost" onClick={() => { setActive(null); setTab('rooms'); }}>{!caseData.rooms[active].final && sideRoomsDone ? caseData.rooms[caseData.finalRoomIndex].name + ' đã mở — quay lại hành lang' : 'Trở về sơ đồ tòa nhà'}</Button></div></div>}

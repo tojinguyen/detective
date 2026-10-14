@@ -251,7 +251,7 @@ function parseBlock(block: string, generatedId: number): ParsedQuestion | null {
             ? 'Nhập giá trị đúng.'
             : 'Viết lại phép biến đổi cho đúng.',
       difficulty: inferDifficulty(difficultyRaw),
-      givenLine: errorLine + 1,
+      givenLine: inferDifficulty(difficultyRaw) === 'Dễ' ? errorLine + 1 : null,
       bad,
       correct,
       sourceLatex: block.trim(),
