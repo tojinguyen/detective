@@ -29,6 +29,8 @@ export type CasePerson = {
   name: string;
   role: string;
   color: string;
+  /** Ảnh chân dung riêng; mặc định /vu_an_{số vụ án}/suspect-{thứ tự}.webp */
+  portrait?: string;
   facts: Record<string, FactValue>;
 };
 
@@ -125,11 +127,11 @@ export const CASE_01: CaseDefinition = {
     ]
   },
   rooms: [
-    { no: '01', name: 'Phòng học', source: 'PHÒNG HỌC', object: 'Phiếu nháp trên bàn', image: '/room-classroom.png', note: 'Một lời giải bị bỏ dở cạnh cửa sổ.', position: 'north', final: false, door: { x: 50, y: 27 }, facing: 'back' },
-    { no: '02', name: 'Phòng lưu trữ', source: 'PHÒNG LƯU TRỮ', object: 'Sổ kiểm kê', image: '/room-archive.png', note: 'Ngăn hồ sơ có một trang bị đánh dấu.', position: 'west', final: false, door: { x: 24, y: 50 }, facing: 'left' },
-    { no: '03', name: 'Phòng câu lạc bộ', source: 'PHÒNG CÂU LẠC BỘ', object: 'Ghi chú trên bảng', image: '/detective-room.png', note: 'Bảng ghim còn giữ lại một mảnh giấy.', position: 'east', final: false, door: { x: 76, y: 50 }, facing: 'right' },
-    { no: '04', name: 'Kho đạo cụ', source: 'KHO ĐẠO CỤ', object: 'Thẻ nhớ camera', image: '/room-archive.png', note: 'Một thẻ nhớ nằm trong khay chứng cứ.', position: 'south', final: false, door: { x: 50, y: 73 }, facing: 'front' },
-    { no: '05', name: 'Buồng an ninh', source: 'BUỒNG AN NINH', object: 'Màn hình bị đóng băng', image: '/room-security.png', note: 'Khôi phục khung hình cuối cùng của vụ án.', position: 'security', final: true, door: { x: 76, y: 73 }, facing: 'front', securityWarning: 'Tín hiệu camera bị kẹt ở một phép tính sai. Sửa phiếu kiểm tra để khôi phục hình ảnh.' },
+    { no: '01', name: 'Phòng học', source: 'PHÒNG HỌC', object: 'Phiếu nháp trên bàn', image: '/room_1/room-classroom.webp', note: 'Một lời giải bị bỏ dở cạnh cửa sổ.', position: 'north', final: false, door: { x: 50, y: 27 }, facing: 'back' },
+    { no: '02', name: 'Phòng lưu trữ', source: 'PHÒNG LƯU TRỮ', object: 'Sổ kiểm kê', image: '/room_1/room-archive.webp', note: 'Ngăn hồ sơ có một trang bị đánh dấu.', position: 'west', final: false, door: { x: 24, y: 50 }, facing: 'left' },
+    { no: '03', name: 'Phòng câu lạc bộ', source: 'PHÒNG CÂU LẠC BỘ', object: 'Ghi chú trên bảng', image: '/room_1/detective-room.webp', note: 'Bảng ghim còn giữ lại một mảnh giấy.', position: 'east', final: false, door: { x: 76, y: 50 }, facing: 'right' },
+    { no: '04', name: 'Kho đạo cụ', source: 'KHO ĐẠO CỤ', object: 'Thẻ nhớ camera', image: '/room_1/room-archive.webp', note: 'Một thẻ nhớ nằm trong khay chứng cứ.', position: 'south', final: false, door: { x: 50, y: 73 }, facing: 'front' },
+    { no: '05', name: 'Buồng an ninh', source: 'BUỒNG AN NINH', object: 'Màn hình bị đóng băng', image: '/room_1/room-security.webp', note: 'Khôi phục khung hình cuối cùng của vụ án.', position: 'security', final: true, door: { x: 76, y: 73 }, facing: 'front', securityWarning: 'Tín hiệu camera bị kẹt ở một phép tính sai. Sửa phiếu kiểm tra để khôi phục hình ảnh.' },
   ],
   people: [
     { id: 'ha', name: 'Cô Hạ', role: 'Giáo viên Mỹ thuật', color: '#bc8951', facts: { height: 158, arrived: '15:52', card: 'Xanh dương', caseLength: 24, route: 'Cầu thang' } },
@@ -199,11 +201,11 @@ export const CASE_02: CaseDefinition = {
     ]
   },
   rooms: [
-    { no: '01', name: 'Khu Tính nhanh', source: 'VÒNG 1: TÍNH NHANH', object: 'Bảng bấm giờ điện tử', image: '/room-classroom.png', note: 'Dữ liệu thời gian về đích vòng Tính nhanh bị kẹt ở một phép toán số học.', position: 'north', final: false, door: { x: 50, y: 27 }, facing: 'back' },
-    { no: '02', name: 'Sân Đo đạc thực tế', source: 'VÒNG 2: ĐO ĐẠC', object: 'Sổ số liệu trắc địa', image: '/room-archive.png', note: 'Phiếu tính chu vi và diện tích thực địa cần được kiểm tra lại.', position: 'west', final: false, door: { x: 24, y: 50 }, facing: 'left' },
-    { no: '03', name: 'Phòng Lập trình mini', source: 'VÒNG 3: LẬP TRÌNH', object: 'Mạch Micro:bit vòng 3', image: '/detective-room.png', note: 'Vi mạch lập trình điều khiển robot ghi nhận điểm số vòng 3.', position: 'east', final: false, door: { x: 76, y: 50 }, facing: 'right' },
-    { no: '04', name: 'Mê cung Giải mã bản đồ', source: 'VÒNG 4: BẢN ĐỒ', object: 'Tọa độ mật mã vòng 4', image: '/room-archive.png', note: 'Mảnh bản đồ cuối cùng để xác định người dẫn đầu vòng 4.', position: 'south', final: false, door: { x: 50, y: 73 }, facing: 'front' },
-    { no: '05', name: 'Ban Tổ chức', source: 'CHẶNG CUỐI: TỔNG KẾT', object: 'Biên bản quy chế chung cuộc', image: '/room-security.png', note: 'Khôi phục máy chủ tổng để đọc quy chế xét Quán quân chính thức.', position: 'security', final: true, door: { x: 76, y: 73 }, facing: 'front', securityWarning: 'Máy chủ tính điểm bị ngắt mạch. Giải bài toán tổng kết để mở khóa quy chế chọn quán quân.' },
+    { no: '01', name: 'Khu Tính nhanh', source: 'VÒNG 1: TÍNH NHANH', object: 'Bảng bấm giờ điện tử', image: '/room_2/room-1.webp', note: 'Dữ liệu thời gian về đích vòng Tính nhanh bị kẹt ở một phép toán số học.', position: 'north', final: false, door: { x: 50, y: 27 }, facing: 'back' },
+    { no: '02', name: 'Sân Đo đạc thực tế', source: 'VÒNG 2: ĐO ĐẠC', object: 'Sổ số liệu trắc địa', image: '/room_2/room-2.webp', note: 'Phiếu tính chu vi và diện tích thực địa cần được kiểm tra lại.', position: 'west', final: false, door: { x: 24, y: 50 }, facing: 'left' },
+    { no: '03', name: 'Phòng Lập trình mini', source: 'VÒNG 3: LẬP TRÌNH', object: 'Mạch Micro:bit vòng 3', image: '/room_2/room-3.webp', note: 'Vi mạch lập trình điều khiển robot ghi nhận điểm số vòng 3.', position: 'east', final: false, door: { x: 76, y: 50 }, facing: 'right' },
+    { no: '04', name: 'Mê cung Giải mã bản đồ', source: 'VÒNG 4: BẢN ĐỒ', object: 'Tọa độ mật mã vòng 4', image: '/room_2/room-4.webp', note: 'Mảnh bản đồ cuối cùng để xác định người dẫn đầu vòng 4.', position: 'south', final: false, door: { x: 50, y: 73 }, facing: 'front' },
+    { no: '05', name: 'Ban Tổ chức', source: 'CHẶNG CUỐI: TỔNG KẾT', object: 'Biên bản quy chế chung cuộc', image: '/room_2/room-5.webp', note: 'Khôi phục máy chủ tổng để đọc quy chế xét Quán quân chính thức.', position: 'security', final: true, door: { x: 76, y: 73 }, facing: 'front', securityWarning: 'Máy chủ tính điểm bị ngắt mạch. Giải bài toán tổng kết để mở khóa quy chế chọn quán quân.' },
   ],
   people: [
     { id: 'minh', name: 'Minh', role: 'Lớp 7A', color: '#3b82f6', facts: { class: '7A', shirt: 'Xanh dương', specialty: 'Tính nhanh', style: 'Thi đấu cá nhân', gender: 'Nam', roundWon: 'Vòng 1 (Tính nhanh)' } },
@@ -303,15 +305,15 @@ export const CASE_03: CaseDefinition = {
     ]
   },
   rooms: [
-    { no: '01', name: 'Bảng quảng cáo', source: 'HIỆN TRƯỜNG 1: BẢNG QUẢNG CÁO', object: 'Mảnh vải ở tủ điện', image: '/room-classroom.png', note: 'Biển quảng cáo chập điện đã được ngắt cầu dao; cạnh tủ điện vướng một mảnh vải.', position: 'north', final: false, door: { x: 50, y: 27 }, facing: 'back' },
-    { no: '02', name: 'Điểm sơ cứu', source: 'HIỆN TRƯỜNG 2: ĐIỂM SƠ CỨU', object: 'Băng gạc & nẹp sơ cứu', image: '/room-archive.png', note: 'Người bán hàng rong bị ngã đã được xử lý chấn thương và băng bó đúng phương pháp.', position: 'west', final: false, door: { x: 24, y: 50 }, facing: 'left' },
-    { no: '03', name: 'Cột đèn đường', source: 'HIỆN TRƯỜNG 3: CỘT ĐÈN ĐƯỜNG', object: 'Dấu giày trên nền đất', image: '/detective-room.png', note: 'Trụ đèn rò điện đã được phong tỏa an toàn; dưới chân cột đèn còn in rõ dấu giày.', position: 'east', final: false, door: { x: 76, y: 50 }, facing: 'right' },
+    { no: '01', name: 'Bảng quảng cáo', source: 'HIỆN TRƯỜNG 1: BẢNG QUẢNG CÁO', object: 'Mảnh vải ở tủ điện', image: '/room_3/room-1.webp', note: 'Biển quảng cáo chập điện đã được ngắt cầu dao; cạnh tủ điện vướng một mảnh vải.', position: 'north', final: false, door: { x: 50, y: 27 }, facing: 'back' },
+    { no: '02', name: 'Điểm sơ cứu', source: 'HIỆN TRƯỜNG 2: ĐIỂM SƠ CỨU', object: 'Băng gạc & nẹp sơ cứu', image: '/room_3/room-2.webp', note: 'Người bán hàng rong bị ngã đã được xử lý chấn thương và băng bó đúng phương pháp.', position: 'west', final: false, door: { x: 24, y: 50 }, facing: 'left' },
+    { no: '03', name: 'Cột đèn đường', source: 'HIỆN TRƯỜNG 3: CỘT ĐÈN ĐƯỜNG', object: 'Dấu giày trên nền đất', image: '/room_3/room-3.webp', note: 'Trụ đèn rò điện đã được phong tỏa an toàn; dưới chân cột đèn còn in rõ dấu giày.', position: 'east', final: false, door: { x: 76, y: 50 }, facing: 'right' },
     {
       no: '04',
       name: 'Ngã tư khu phố',
       source: 'ĐỊA ĐIỂM 4: NGÃ TƯ KHU PHỐ',
       object: 'Lời khai nhân chứng',
-      image: '/room-archive.png',
+      image: '/room_3/room-4.webp',
       note: 'Các nhân chứng có mặt gần ngã tư vào thời điểm xảy ra sự cố cung cấp những thông tin quan trọng.',
       position: 'south',
       final: false,
@@ -335,7 +337,7 @@ export const CASE_03: CaseDefinition = {
       name: 'Tủ dụng cụ',
       source: 'CHẶNG CUỐI: TỦ DỤNG CỤ',
       object: 'Chiếc đèn pin kim loại',
-      image: '/room-security.png',
+      image: '/room_3/room-5.webp',
       note: 'Tủ chứa đồ nghề tại chốt bảo vệ dân phòng có chứa vật dụng quan trọng của người hùng.',
       position: 'security',
       final: true,

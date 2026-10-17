@@ -80,7 +80,7 @@ export default function Home() {
   const [worldMessage, setWorldMessage] = useState('Chọn một căn phòng để thám tử tự di chuyển tới vật chứng.');
 
   const personStyle = (i: number): CSSProperties => ({ '--person': caseData.people[i]?.color || '#888' }) as CSSProperties;
-  const portraitPosition = (index: number) => caseData.people.length === 1 ? 50 : (index / (caseData.people.length - 1)) * 100;
+  const portraitSrc = (index: number) => caseData.people[index]?.portrait ?? '/vu_an_' + Number(caseData.id.replace('case-', '')) + '/suspect-' + (index + 1) + '.webp';
   const factText = (person: number, field: number) => {
     const definition = caseData.profileFields[field];
     if (!definition) return '';
@@ -641,7 +641,7 @@ export default function Home() {
                       return field.label + ' ' + (unlocked ? factText(index, fieldIndex) : 'chưa mở');
                     }).join(', ');
                     return <button key={profile.id} className={'suspect-card ' + (isOut ? 'eliminated' : '')} onClick={() => toggleEliminated(index)} aria-pressed={isOut} aria-label={(isOut ? 'Khôi phục ' : 'Đánh dấu không phù hợp ') + profile.name + ', ' + profile.role + ', ' + factsLabel}>
-                      <span className="suspect-portrait" style={{ backgroundPosition: portraitPosition(index) + '% 9%' }} aria-hidden="true" />
+                      <span className="suspect-portrait" style={{ backgroundImage: "linear-gradient(180deg,rgba(14,26,32,.25) 0%,transparent 25%,transparent 70%,#192b31 100%),url('" + portraitSrc(index) + "')" }} aria-hidden="true" />
                       <span className="suspect-name"><small>HỒ SƠ 0{index + 1} · {profile.role}</small><strong>{profile.name}</strong></span>
                       <span className="suspect-data">{caseData.profileFields.map((field, fieldIndex) => {
                         const FactIcon = PROFILE_ICONS[field.icon] || Tag;
