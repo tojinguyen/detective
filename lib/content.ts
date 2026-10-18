@@ -1,5 +1,5 @@
 import rawQuestions from '@/lib/questions.json';
-import { CASE_01, type CaseDefinition } from '@/lib/cases';
+import { CASE_01, CASES, type CaseDefinition } from '@/lib/cases';
 
 export type QuestionKind = 'symbol' | 'value' | 'expression' | 'choice';
 export type QuestionOption = {
@@ -36,6 +36,8 @@ export type LocalContent = {
   caseQuestionIds: Record<string, number[]>;
   /** Id các bài đã sửa/xóa trên máy này nhưng chưa ghi được lên Cloud. */
   pendingSyncIds: number[];
+  /** Id các vụ án đã đổi bài gán phòng trên máy này nhưng chưa ghi được lên Cloud. */
+  pendingCaseIds: string[];
 };
 
 type StoredContent = Partial<LocalContent> & { case01QuestionIds?: unknown };
@@ -47,6 +49,7 @@ export const DEFAULT_LOCAL_CONTENT: LocalContent = {
   questionOverrides: [],
   caseQuestionIds: { [CASE_01.id]: [...CASE_01.defaultQuestionIds] },
   pendingSyncIds: [],
+  pendingCaseIds: [],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -73,11 +76,17 @@ export function readLocalContent(): LocalContent {
       : legacyCase01Ids?.length === CASE_01.rooms.length
         ? legacyCase01Ids
         : [...CASE_01.defaultQuestionIds];
+    const caseQuestionIds = { ...storedAssignments, [CASE_01.id]: case01Ids };
+    // Dữ liệu cũ chưa có pendingCaseIds: coi mọi vụ đã đổi bài trên máy là chưa lên Cloud, để không mất khi tải bản Cloud về.
+    const pendingCaseIds = Array.isArray(parsed?.pendingCaseIds)
+      ? parsed.pendingCaseIds.filter((id): id is string => typeof id === 'string')
+      : CASES.filter(c => (caseQuestionIds[c.id] ?? []).some((id, i) => id !== c.defaultQuestionIds[i])).map(c => c.id);
     return {
       customQuestions: Array.isArray(parsed?.customQuestions) ? parsed.customQuestions : [],
       questionOverrides: Array.isArray(parsed?.questionOverrides) ? parsed.questionOverrides : [],
-      caseQuestionIds: { ...storedAssignments, [CASE_01.id]: case01Ids },
+      caseQuestionIds,
       pendingSyncIds: numericIds(parsed?.pendingSyncIds) ?? [],
+      pendingCaseIds,
     };
   } catch {
     return DEFAULT_LOCAL_CONTENT;
@@ -120,6 +129,20 @@ export function mergeCloudQuestions(local: LocalContent, cloud: Question[]): Loc
       ...local.questionOverrides.filter(q => pending.has(q.id)),
     ],
   };
+}
+
+/**
+ * Ghép bộ gán phòng trên Cloud vào máy. Vụ nào còn trong pendingCaseIds thì giữ bản trên máy;
+ * vụ không có trên Cloud thì dùng bộ bài gốc.
+ */
+export function mergeCloudAssignments(local: LocalContent, cloud: Record<string, number[]>): LocalContent {
+  const pending = new Set(local.pendingCaseIds);
+  const caseQuestionIds: Record<string, number[]> = {};
+  CASES.forEach(c => {
+    const ids = pending.has(c.id) ? local.caseQuestionIds[c.id] : cloud[c.id];
+    if (ids) caseQuestionIds[c.id] = ids;
+  });
+  return { ...local, caseQuestionIds };
 }
 
 export function questionIdsForCase(content: LocalContent, caseData: CaseDefinition) {

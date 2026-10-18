@@ -25,7 +25,7 @@ import {
   Check
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { fetchQuestionsFromDb, pushPendingQuestions } from '@/lib/questions-db';
+import { allocateQuestionIds, fetchAssignmentsFromDb, fetchQuestionsFromDb, pushPendingAssignments, pushPendingQuestions } from '@/lib/questions-db';
 import { Button } from '@/components/ui/button';
 import { AppHeader } from '@/components/app-header';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -34,6 +34,7 @@ import {
   DEFAULT_LOCAL_CONTENT,
   allQuestions,
   findLocalQuestion,
+  mergeCloudAssignments,
   mergeCloudQuestions,
   questionIdsForCase,
   readLocalContent,
@@ -254,6 +255,7 @@ export default function QuestionBankPage() {
   // Cloud sync
   const [sync, setSync] = useState<SyncState>({ state: 'idle' });
   const contentRef = useRef(content);
+  const [savingNew, setSavingNew] = useState(false);
 
   const bank = useMemo(() => allQuestions(content), [content]);
   const maxQuestionId = useMemo(() => Math.max(0, ...bank.map(q => q.id)), [bank]);
@@ -349,22 +351,33 @@ export default function QuestionBankPage() {
    */
   const syncNow = useCallback(async (pull: boolean, source?: LocalContent) => {
     setSync({ state: 'syncing' });
-    const push = await pushPendingQuestions(source ?? contentRef.current)
+    const local = source ?? contentRef.current;
+    // Gửi bài trước, rồi mới gửi bộ gán phòng (phòng có thể đang trỏ tới bài vừa tạo).
+    const push = await pushPendingQuestions(local)
       .catch((err): Awaited<ReturnType<typeof pushPendingQuestions>> => ({ synced: [], error: errorMessage(err) }));
+    const pushCases = await pushPendingAssignments(local)
+      .catch((err): Awaited<ReturnType<typeof pushPendingAssignments>> => ({ synced: [], error: errorMessage(err) }));
     let cloud: Question[] | null = null;
-    let pullError: string | undefined;
+    let cloudAssignments: Record<string, number[]> | null = null;
+    const pullErrors: string[] = [];
     if (pull) {
-      try { cloud = await fetchQuestionsFromDb(); } catch (err) { pullError = errorMessage(err); }
+      const [questions, assignments] = await Promise.allSettled([fetchQuestionsFromDb(), fetchAssignmentsFromDb()]);
+      if (questions.status === 'fulfilled') cloud = questions.value; else pullErrors.push(errorMessage(questions.reason));
+      if (assignments.status === 'fulfilled') cloudAssignments = assignments.value; else pullErrors.push('Gán phòng: ' + errorMessage(assignments.reason));
     }
     const sent = new Map(push.synced.map(entry => [entry.id, entry.snapshot]));
+    const sentCases = new Map(pushCases.synced.map(entry => [entry.caseId, entry.snapshot]));
     setContent(prev => {
-      const next = {
+      let next: LocalContent = {
         ...prev,
         pendingSyncIds: prev.pendingSyncIds.filter(id => !sent.has(id) || findLocalQuestion(prev, id) !== sent.get(id)),
+        pendingCaseIds: prev.pendingCaseIds.filter(id => !sentCases.has(id) || prev.caseQuestionIds[id] !== sentCases.get(id)),
       };
-      return cloud ? mergeCloudQuestions(next, cloud) : next;
+      if (cloud) next = mergeCloudQuestions(next, cloud);
+      if (cloudAssignments) next = mergeCloudAssignments(next, cloudAssignments);
+      return next;
     });
-    const error = push.error ?? pullError;
+    const error = [push.error, pushCases.error && 'Gán phòng: ' + pushCases.error, ...pullErrors].filter(Boolean).join('; ') || undefined;
     setSync(error ? { state: 'error', error } : { state: 'synced' });
   }, []);
 
@@ -380,12 +393,19 @@ export default function QuestionBankPage() {
     if (hydrated) writeLocalContent(content);
   }, [content, hydrated]);
 
-  /** Lưu thay đổi trên máy; changedIds (nếu có) được đánh dấu chờ và gửi lên Cloud ngay. */
-  function persist(next: LocalContent, feedback: string, changedIds: number[] = []) {
-    const withPending = changedIds.length ? { ...next, pendingSyncIds: [...new Set([...next.pendingSyncIds, ...changedIds])] } : next;
+  /**
+   * Lưu thay đổi trên máy; changedIds (bài) và changedCaseIds (vụ đổi gán phòng)
+   * được đánh dấu chờ và gửi lên Cloud ngay.
+   */
+  function persist(next: LocalContent, feedback: string, changedIds: number[] = [], changedCaseIds: string[] = []) {
+    const withPending = {
+      ...next,
+      pendingSyncIds: [...new Set([...next.pendingSyncIds, ...changedIds])],
+      pendingCaseIds: [...new Set([...next.pendingCaseIds, ...changedCaseIds])],
+    };
     setContent(withPending);
     setMessage(feedback);
-    if (changedIds.length) syncNow(false, withPending);
+    if (changedIds.length || changedCaseIds.length) syncNow(false, withPending);
   }
 
   function storeQuestion(question: Question, feedback: string) {
@@ -514,14 +534,19 @@ export default function QuestionBankPage() {
   function assignQuestion(roomIndex: number, questionId: number) {
     const ids = [...assignedQuestionIds];
     ids[roomIndex] = questionId;
-    persist({ ...content, caseQuestionIds: { ...content.caseQuestionIds, [selectedCase.id]: ids } }, 'Đã gán Bài ' + questionId + ' vào ' + roomNames[roomIndex] + ' (Vụ ' + selectedCase.number + ').');
+    persist(
+      { ...content, caseQuestionIds: { ...content.caseQuestionIds, [selectedCase.id]: ids } },
+      'Đã gán Bài ' + questionId + ' vào ' + roomNames[roomIndex] + ' (Vụ ' + selectedCase.number + ').',
+      [],
+      [selectedCase.id],
+    );
   }
 
   function resetAssignments() {
     persist({
       ...content,
       caseQuestionIds: { ...content.caseQuestionIds, [selectedCase.id]: [...selectedCase.defaultQuestionIds] },
-    }, 'Vụ ' + selectedCase.number + ' đã trở về bộ bài gốc.');
+    }, 'Vụ ' + selectedCase.number + ' đã trở về bộ bài gốc.', [], [selectedCase.id]);
   }
 
   function exportContent() {
@@ -574,16 +599,38 @@ export default function QuestionBankPage() {
     }
   }
 
-  function handleSaveJsonQuestions() {
-    if (jsonParsedQuestions.length === 0) return;
-    persist(
-      { ...content, customQuestions: [...content.customQuestions, ...jsonParsedQuestions] },
-      `Đã thêm ${jsonParsedQuestions.length} câu hỏi vào kho.`,
-      jsonParsedQuestions.map(q => q.id),
-    );
-    setJsonParsedQuestions([]);
-    setJsonText('');
-    setActiveTab('bank');
+  /**
+   * Đổi mã các bài mới sang mã do Cloud cấp, để hai admin cùng tạo bài không bị trùng mã.
+   * Bài mang sẵn mã đã có trong kho thì giữ nguyên.
+   */
+  async function withCloudIds(questions: Question[]) {
+    const taken = new Set(allQuestions(contentRef.current).map(q => q.id));
+    const fresh = questions.filter(q => !taken.has(q.id));
+    if (!fresh.length) return { questions, note: '' };
+    const { ids, fromCloud } = await allocateQuestionIds(fresh.length, taken);
+    const remap = new Map(fresh.map((q, i) => [q, ids[i]]));
+    const result = questions.map(q => remap.has(q) ? { ...q, id: remap.get(q)! } : q);
+    const range = ids.length > 1 ? `mã ${ids[0]}–${ids[ids.length - 1]}` : `mã ${ids[0]}`;
+    return { questions: result, note: fromCloud ? ` (${range}).` : ` (${range}, cấp tạm trên máy vì chưa kết nối được Cloud).` };
+  }
+
+  async function handleSaveJsonQuestions() {
+    if (jsonParsedQuestions.length === 0 || savingNew) return;
+    setSavingNew(true);
+    try {
+      const { questions, note } = await withCloudIds(jsonParsedQuestions);
+      const current = contentRef.current;
+      persist(
+        { ...current, customQuestions: [...current.customQuestions, ...questions] },
+        `Đã thêm ${questions.length} câu hỏi vào kho` + (note || '.'),
+        questions.map(q => q.id),
+      );
+      setJsonParsedQuestions([]);
+      setJsonText('');
+      setActiveTab('bank');
+    } finally {
+      setSavingNew(false);
+    }
   }
 
   function copyTemplateJson() {
@@ -602,22 +649,29 @@ export default function QuestionBankPage() {
     setMessage(result.length ? 'Đã đọc được ' + result.length + ' câu. Kiểm tra thẻ phân tích trước khi lưu.' : 'Chưa đọc được câu hỏi theo cấu trúc 1–7.');
   }
 
-  function saveParsedLatex() {
-    if (!parsed.length) return;
-    const newQuestions = parsed.map(item => item.question);
-    const nextIds = [...assignedQuestionIds];
-    if (newQuestions.length === selectedCase.rooms.length) newQuestions.forEach((question, index) => { nextIds[index] = question.id; });
-    else nextIds[Number(latexTargetRoom)] = newQuestions[0].id;
-    persist(
-      { ...content, customQuestions: [...content.customQuestions, ...newQuestions], caseQuestionIds: { ...content.caseQuestionIds, [selectedCase.id]: nextIds } },
-      newQuestions.length === selectedCase.rooms.length
-        ? 'Đã thêm ' + newQuestions.length + ' bài dưới trạng thái Cần duyệt và gán lần lượt vào các phòng của Vụ ' + selectedCase.number + '.'
-        : 'Đã thêm Bài ' + newQuestions[0].id + ' và gán vào ' + roomNames[Number(latexTargetRoom)] + ' (Vụ ' + selectedCase.number + ').',
-      newQuestions.map(q => q.id),
-    );
-    setParsed([]);
-    setLatex('');
-    setActiveTab('bank');
+  async function saveParsedLatex() {
+    if (!parsed.length || savingNew) return;
+    setSavingNew(true);
+    try {
+      const { questions: newQuestions, note } = await withCloudIds(parsed.map(item => item.question));
+      const current = contentRef.current;
+      const nextIds = [...questionIdsForCase(current, selectedCase)];
+      if (newQuestions.length === selectedCase.rooms.length) newQuestions.forEach((question, index) => { nextIds[index] = question.id; });
+      else nextIds[Number(latexTargetRoom)] = newQuestions[0].id;
+      persist(
+        { ...current, customQuestions: [...current.customQuestions, ...newQuestions], caseQuestionIds: { ...current.caseQuestionIds, [selectedCase.id]: nextIds } },
+        (newQuestions.length === selectedCase.rooms.length
+          ? 'Đã thêm ' + newQuestions.length + ' bài dưới trạng thái Cần duyệt và gán lần lượt vào các phòng của Vụ ' + selectedCase.number
+          : 'Đã thêm Bài ' + newQuestions[0].id + ' và gán vào ' + roomNames[Number(latexTargetRoom)] + ' (Vụ ' + selectedCase.number + ')') + (note || '.'),
+        newQuestions.map(q => q.id),
+        [selectedCase.id],
+      );
+      setParsed([]);
+      setLatex('');
+      setActiveTab('bank');
+    } finally {
+      setSavingNew(false);
+    }
   }
 
   const warningCount = parsed.reduce((sum, item) => sum + item.warnings.length, 0);
@@ -657,7 +711,7 @@ export default function QuestionBankPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <SyncButton sync={sync} pending={content.pendingSyncIds.length} onSync={() => syncNow(true)} />
+            <SyncButton sync={sync} pending={content.pendingSyncIds.length + content.pendingCaseIds.length} onSync={() => syncNow(true)} />
             <Button
               variant="ghost"
               onClick={exportContent}
@@ -1307,6 +1361,7 @@ export default function QuestionBankPage() {
                       </div>
                       <Button
                         onClick={handleSaveJsonQuestions}
+                        disabled={savingNew}
                         className="bg-[#ceac79] text-[#122227] hover:bg-[#deb97b] font-bold text-xs h-9 px-5 gap-1.5 shadow-md"
                       >
                         <CheckCircle2 size={16} /> Xác nhận lưu {jsonParsedQuestions.length} câu vào kho
@@ -1434,7 +1489,7 @@ export default function QuestionBankPage() {
                     </div>
 
                     <div className="flex justify-end pt-3 border-t border-[#21353e]">
-                      <Button onClick={saveParsedLatex} className="bg-[#ceac79] text-[#122227] hover:bg-[#deb97b] font-bold text-xs h-9 px-4">
+                      <Button onClick={saveParsedLatex} disabled={savingNew} className="bg-[#ceac79] text-[#122227] hover:bg-[#deb97b] font-bold text-xs h-9 px-4">
                         <CheckCircle2 size={16} className="mr-1.5" />
                         {parsed.length === selectedCase.rooms.length
                           ? `Lưu và gán vào ${selectedCase.rooms.length} phòng`

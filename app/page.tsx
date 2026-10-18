@@ -17,8 +17,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { candidates, comparisonFeedback, verdict, isDetectionCorrect, isCorrectionCorrect } from '@/lib/game';
 import { CASE_01, CASES, getCase, type Direction, type CaseDefinition } from '@/lib/cases';
-import { defaultQuestionsForCase, questionsForCase, readLocalContent, writeLocalContent, mergeCloudQuestions, type Question } from '@/lib/content';
-import { fetchQuestionsFromDb } from '@/lib/questions-db';
+import { defaultQuestionsForCase, questionsForCase, readLocalContent, writeLocalContent, mergeCloudQuestions, mergeCloudAssignments, type Question } from '@/lib/content';
+import { fetchAssignmentsFromDb, fetchQuestionsFromDb } from '@/lib/questions-db';
 import { tokeniseMath } from '@/lib/latex-question-parser';
 import { formatInvestigationTime, investigationReport, traceStatus, TRACE_STATUS_LABELS, type InvestigationRecord } from '@/lib/investigation-report';
 import { evaluateRank, type DetectiveRank, type CaseScoreBreakdown } from '@/lib/scoring';
@@ -296,13 +296,15 @@ export default function Home() {
     const initial = readLocalContent();
     setQuestions(questionsForCase(initial, caseData));
 
-    // Chỉ đọc từ Cloud; bài chưa đồng bộ (pendingSyncIds) vẫn giữ bản trên máy.
-    fetchQuestionsFromDb().then(dbQuestions => {
-      const nextContent = mergeCloudQuestions(readLocalContent(), dbQuestions);
+    // Chỉ đọc từ Cloud; bài và vụ chưa đồng bộ (pendingSyncIds, pendingCaseIds) vẫn giữ bản trên máy.
+    Promise.allSettled([fetchQuestionsFromDb(), fetchAssignmentsFromDb()]).then(([dbQuestions, dbAssignments]) => {
+      let nextContent = readLocalContent();
+      if (dbQuestions.status === 'fulfilled') nextContent = mergeCloudQuestions(nextContent, dbQuestions.value);
+      else console.warn('Không thể nạp đề từ Cloud:', dbQuestions.reason);
+      if (dbAssignments.status === 'fulfilled') nextContent = mergeCloudAssignments(nextContent, dbAssignments.value);
+      else console.warn('Không thể nạp bộ gán phòng từ Cloud:', dbAssignments.reason);
       writeLocalContent(nextContent);
       setQuestions(questionsForCase(nextContent, caseData));
-    }).catch(err => {
-      console.warn('Không thể nạp đề từ Cloud:', err);
     });
   }, [caseData]);
 

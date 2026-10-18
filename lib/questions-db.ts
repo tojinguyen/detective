@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
-import { findLocalQuestion, type LocalContent, type Question, type QuestionKind } from '@/lib/content';
+import { findLocalQuestion, questionIdsForCase, type LocalContent, type Question, type QuestionKind } from '@/lib/content';
+import { CASES } from '@/lib/cases';
 
 export interface DbQuestionRow {
   id: number;
@@ -117,4 +118,65 @@ export async function pushPendingQuestions(content: LocalContent): Promise<PushR
     if (error) errors.push(error.message); else synced.push(...deletes);
   }
   return { synced, error: errors.length ? errors.join('; ') : undefined };
+}
+
+/** Bộ gán phòng trên Cloud, dạng caseId → id bài theo thứ tự phòng (phòng thiếu dùng bài gốc). */
+export async function fetchAssignmentsFromDb(): Promise<Record<string, number[]>> {
+  const { data, error } = await supabase
+    .from('case_assignments')
+    .select('case_id, room_index, question_id');
+  if (error) throw new Error(error.message);
+  const result: Record<string, number[]> = {};
+  (data ?? []).forEach(row => {
+    const caseData = CASES.find(c => c.id === row.case_id);
+    const room = Number(row.room_index);
+    if (!caseData || !Number.isInteger(room) || room < 0 || room >= caseData.rooms.length) return;
+    result[caseData.id] ??= [...caseData.defaultQuestionIds];
+    result[caseData.id][room] = Number(row.question_id);
+  });
+  return result;
+}
+
+export type AssignmentPushResult = {
+  /** Vụ đã ghi xong, kèm mảng đã gửi để bên gọi biết bản đó còn mới nhất không. */
+  synced: { caseId: string; snapshot: number[] | undefined }[];
+  error?: string;
+};
+
+/** Ghi bộ gán phòng của các vụ trong pendingCaseIds lên Cloud (mỗi phòng một dòng). */
+export async function pushPendingAssignments(content: LocalContent): Promise<AssignmentPushResult> {
+  const cases = CASES.filter(c => content.pendingCaseIds.includes(c.id));
+  if (!cases.length) return { synced: [] };
+  const rows = cases.flatMap(c => questionIdsForCase(content, c).map((questionId, roomIndex) => ({
+    case_id: c.id,
+    room_index: roomIndex,
+    question_id: questionId,
+  })));
+  const { error } = await supabase.from('case_assignments').upsert(rows, { onConflict: 'case_id,room_index' });
+  if (error) return { synced: [], error: error.message };
+  return { synced: cases.map(c => ({ caseId: c.id, snapshot: content.caseQuestionIds[c.id] })) };
+}
+
+/**
+ * Xin Cloud cấp `count` mã bài mới để hai admin tạo bài cùng lúc không bị trùng mã.
+ * Không gọi được hàm cấp mã thì lấy mã lớn nhất trên Cloud; mất mạng thì đành dùng mã trên máy.
+ */
+export async function allocateQuestionIds(count: number, takenIds: Set<number>): Promise<{ ids: number[]; fromCloud: boolean }> {
+  const localMax = Math.max(0, ...takenIds);
+  const range = (start: number) => Array.from({ length: count }, (_, i) => start + i);
+
+  const { data, error } = await supabase.rpc('allocate_question_ids', { how_many: count });
+  if (!error && Array.isArray(data) && data.length === count) {
+    const ids = data.map(Number);
+    if (ids.every(id => Number.isInteger(id) && !takenIds.has(id))) return { ids, fromCloud: true };
+  }
+
+  const { data: top, error: topError } = await supabase
+    .from('questions')
+    .select('id')
+    .order('id', { ascending: false })
+    .limit(1);
+  if (!topError) return { ids: range(Math.max(localMax, Number(top?.[0]?.id ?? 0)) + 1), fromCloud: true };
+
+  return { ids: range(localMax + 1), fromCloud: false };
 }
