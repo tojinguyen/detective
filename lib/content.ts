@@ -33,8 +33,9 @@ export const QUESTION_BANK = rawQuestions as Question[];
 export type LocalContent = {
   customQuestions: Question[];
   questionOverrides: Question[];
-  hiddenQuestionIds?: number[];
   caseQuestionIds: Record<string, number[]>;
+  /** Id các bài đã sửa/xóa trên máy này nhưng chưa ghi được lên Cloud. */
+  pendingSyncIds: number[];
 };
 
 type StoredContent = Partial<LocalContent> & { case01QuestionIds?: unknown };
@@ -45,6 +46,7 @@ export const DEFAULT_LOCAL_CONTENT: LocalContent = {
   customQuestions: [],
   questionOverrides: [],
   caseQuestionIds: { [CASE_01.id]: [...CASE_01.defaultQuestionIds] },
+  pendingSyncIds: [],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -75,6 +77,7 @@ export function readLocalContent(): LocalContent {
       customQuestions: Array.isArray(parsed?.customQuestions) ? parsed.customQuestions : [],
       questionOverrides: Array.isArray(parsed?.questionOverrides) ? parsed.questionOverrides : [],
       caseQuestionIds: { ...storedAssignments, [CASE_01.id]: case01Ids },
+      pendingSyncIds: numericIds(parsed?.pendingSyncIds) ?? [],
     };
   } catch {
     return DEFAULT_LOCAL_CONTENT;
@@ -91,6 +94,32 @@ export function allQuestions(content: LocalContent) {
   content.customQuestions.forEach(question => merged.set(question.id, question));
   content.questionOverrides.forEach(question => merged.set(question.id, question));
   return [...merged.values()];
+}
+
+/** Bản bài đang lưu trên máy (tự tạo hoặc đã sửa từ bài mẫu), null nếu không có. */
+export function findLocalQuestion(content: LocalContent, id: number) {
+  return content.questionOverrides.find(q => q.id === id) ?? content.customQuestions.find(q => q.id === id) ?? null;
+}
+
+/**
+ * Ghép dữ liệu Cloud vào nội dung trên máy. Cloud là nguồn chuẩn, trừ những bài
+ * còn trong pendingSyncIds: với các bài đó giữ nguyên bản trên máy (kể cả việc đã xóa).
+ */
+export function mergeCloudQuestions(local: LocalContent, cloud: Question[]): LocalContent {
+  const pending = new Set(local.pendingSyncIds);
+  const defaultIds = new Set(QUESTION_BANK.map(q => q.id));
+  const fromCloud = cloud.filter(q => !pending.has(q.id));
+  return {
+    ...local,
+    customQuestions: [
+      ...fromCloud.filter(q => !defaultIds.has(q.id)),
+      ...local.customQuestions.filter(q => pending.has(q.id)),
+    ],
+    questionOverrides: [
+      ...fromCloud.filter(q => defaultIds.has(q.id)),
+      ...local.questionOverrides.filter(q => pending.has(q.id)),
+    ],
+  };
 }
 
 export function questionIdsForCase(content: LocalContent, caseData: CaseDefinition) {

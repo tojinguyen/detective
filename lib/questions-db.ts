@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import type { Question, QuestionKind } from '@/lib/content';
+import { findLocalQuestion, type LocalContent, type Question, type QuestionKind } from '@/lib/content';
 
 export interface DbQuestionRow {
   id: number;
@@ -21,7 +21,6 @@ export interface DbQuestionRow {
   bad: string[];
   correct: string[];
   source_latex: string;
-  is_hidden?: boolean;
   created_at?: string;
 }
 
@@ -49,7 +48,6 @@ export function toDbQuestion(q: Question): DbQuestionRow {
     bad: Array.isArray(q.bad) ? q.bad : [],
     correct: Array.isArray(q.correct) ? q.correct : [],
     source_latex: q.sourceLatex || '',
-    is_hidden: false,
   };
 }
 
@@ -81,121 +79,42 @@ export function fromDbQuestion(row: any): Question {
 }
 
 /**
- * Tải toàn bộ danh sách câu hỏi từ Supabase
+ * Tải toàn bộ câu hỏi trên Cloud. Ném lỗi khi không đọc được, để bên gọi
+ * phân biệt "Cloud trống" với "không kết nối được" và không ghi đè dữ liệu trên máy.
  */
 export async function fetchQuestionsFromDb(): Promise<Question[]> {
-  try {
-    const { data, error } = await supabase
-      .from('questions')
-      .select('*')
-      .order('id', { ascending: true });
-
-    if (error) {
-      console.warn('Lỗi khi fetch câu hỏi từ Supabase:', error.message);
-      return [];
-    }
-
-    if (!data || data.length === 0) {
-      return [];
-    }
-
-    return data.map(fromDbQuestion);
-  } catch (err) {
-    console.warn('Ngoại lệ khi fetch câu hỏi từ Supabase:', err);
-    return [];
-  }
+  const { data, error } = await supabase
+    .from('questions')
+    .select('*')
+    .order('id', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(fromDbQuestion);
 }
 
-/**
- * Lưu/Cập nhật một câu hỏi lên Supabase
- */
-export async function syncQuestionToDb(question: Question): Promise<{ success: boolean; error?: string }> {
-  try {
-    const row = toDbQuestion(question);
-    const { error } = await supabase.from('questions').upsert(row);
-
-    if (error) {
-      console.error('Lỗi khi sync câu hỏi lên Supabase:', error.message);
-      return { success: false, error: error.message };
-    }
-
-    return { success: true };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Lỗi không xác định khi lưu lên cloud';
-    console.error('Ngoại lệ khi sync câu hỏi lên Supabase:', msg);
-    return { success: false, error: msg };
-  }
-}
+export type PushResult = {
+  /** Bài đã ghi xong, kèm bản đã gửi (null = đã xóa) để bên gọi biết bản đó còn mới nhất không. */
+  synced: { id: number; snapshot: Question | null }[];
+  error?: string;
+};
 
 /**
- * Lưu/Cập nhật hàng loạt câu hỏi lên Supabase
+ * Đẩy các thay đổi trong pendingSyncIds lên Cloud: bài còn trên máy thì upsert,
+ * bài không còn thì xóa.
  */
-export async function syncBatchQuestionsToDb(questions: Question[]): Promise<{ success: boolean; count: number; error?: string }> {
-  if (questions.length === 0) return { success: true, count: 0 };
-  try {
-    const rows = questions.map(toDbQuestion);
-    const { error } = await supabase.from('questions').upsert(rows);
+export async function pushPendingQuestions(content: LocalContent): Promise<PushResult> {
+  const entries = [...new Set(content.pendingSyncIds)].map(id => ({ id, snapshot: findLocalQuestion(content, id) }));
+  const upserts = entries.filter(e => e.snapshot);
+  const deletes = entries.filter(e => !e.snapshot);
+  const synced: PushResult['synced'] = [];
+  const errors: string[] = [];
 
-    if (error) {
-      console.error('Lỗi khi sync batch câu hỏi lên Supabase:', error.message);
-      return { success: false, count: 0, error: error.message };
-    }
-
-    return { success: true, count: rows.length };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Lỗi không xác định khi lưu batch lên cloud';
-    console.error('Ngoại lệ khi sync batch câu hỏi lên Supabase:', msg);
-    return { success: false, count: 0, error: msg };
+  if (upserts.length) {
+    const { error } = await supabase.from('questions').upsert(upserts.map(e => toDbQuestion(e.snapshot!)));
+    if (error) errors.push(error.message); else synced.push(...upserts);
   }
-}
-
-/**
- * Xóa một câu hỏi khỏi Supabase
- */
-export async function deleteQuestionFromDb(id: number): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { error } = await supabase.from('questions').delete().eq('id', id);
-
-    if (error) {
-      console.error(`Lỗi khi xóa câu hỏi #${id} trên Supabase:`, error.message);
-      return { success: false, error: error.message };
-    }
-
-    return { success: true };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Lỗi không xác định khi xóa trên cloud';
-    console.error(`Ngoại lệ khi xóa câu hỏi #${id} trên Supabase:`, msg);
-    return { success: false, error: msg };
+  if (deletes.length) {
+    const { error } = await supabase.from('questions').delete().in('id', deletes.map(e => e.id));
+    if (error) errors.push(error.message); else synced.push(...deletes);
   }
-}
-
-/**
- * Tự động đồng bộ các câu hỏi mẫu ban đầu lên Supabase nếu bảng còn trống
- */
-export async function seedQuestionsIfEmpty(defaultQuestions: Question[]): Promise<boolean> {
-  try {
-    const { count, error: countErr } = await supabase
-      .from('questions')
-      .select('*', { count: 'exact', head: true });
-
-    if (countErr) {
-      console.warn('Không thể kiểm tra số lượng câu hỏi trên Supabase:', countErr.message);
-      return false;
-    }
-
-    if (count === 0 && defaultQuestions.length > 0) {
-      const rows = defaultQuestions.map(toDbQuestion);
-      const { error: insertErr } = await supabase.from('questions').insert(rows);
-      if (insertErr) {
-        console.warn('Tự động khởi tạo câu hỏi mẫu lên Supabase thất bại:', insertErr.message);
-        return false;
-      }
-      return true;
-    }
-
-    return false;
-  } catch (err) {
-    console.warn('Ngoại lệ khi seed câu hỏi mẫu lên Supabase:', err);
-    return false;
-  }
+  return { synced, error: errors.length ? errors.join('; ') : undefined };
 }

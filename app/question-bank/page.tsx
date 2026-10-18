@@ -1,28 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, type FormEvent } from 'react';
 import katex from 'katex';
 import Link from 'next/link';
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   Cloud,
+  CloudOff,
   Copy,
   Download,
-  Eye,
-  FileCheck2,
   FileDown,
   FileText,
-  FolderOpen,
-  Link2,
   Pencil,
-  RefreshCw,
   RotateCcw,
   ScanSearch,
   Sparkles,
@@ -31,22 +24,16 @@ import {
   Check
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
-import {
-  fetchQuestionsFromDb,
-  syncQuestionToDb,
-  syncBatchQuestionsToDb,
-  deleteQuestionFromDb,
-  seedQuestionsIfEmpty,
-} from '@/lib/questions-db';
+import { fetchQuestionsFromDb, pushPendingQuestions } from '@/lib/questions-db';
 import { Button } from '@/components/ui/button';
 import { AppHeader } from '@/components/app-header';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   DEFAULT_LOCAL_CONTENT,
-  QUESTION_BANK,
   allQuestions,
+  findLocalQuestion,
+  mergeCloudQuestions,
   questionIdsForCase,
   readLocalContent,
   writeLocalContent,
@@ -60,14 +47,25 @@ import { parseLatexQuestionBank, tokeniseMath, type ParsedQuestion } from '@/lib
 import { downloadJsonTemplate, parseQuestionsFromJson, QUESTION_TEMPLATE_JSON } from '@/lib/json-template';
 
 const ROOM_NAMES = CASE_01.rooms.map(room => room.name);
+const GRADES = [6, 7, 8, 9] as const;
 const FILTERS = [
   { value: 'all', label: 'Tất cả' },
   { value: 'Dễ', label: 'Dễ' },
   { value: 'Trung bình', label: 'Trung bình' },
   { value: 'Khó', label: 'Khó' },
-  { value: 'unset', label: 'Chưa gắn mức' },
+  { value: 'unset', label: 'Chưa gắn' },
 ] as const;
 type BankFilter = typeof FILTERS[number]['value'];
+type SyncState = { state: 'idle' | 'syncing' | 'synced' | 'error'; error?: string };
+
+const STATUS: Record<Question['auditStatus'], { label: string; dot: string }> = {
+  approved: { label: 'Đã duyệt', dot: 'bg-[#6dc797]' },
+  needs_review: { label: 'Cần duyệt', dot: 'bg-[#e8b35c]' },
+  draft: { label: 'Bản nháp', dot: 'bg-[#6c827a]' },
+};
+
+// Cột của bảng Kho bài (chỉ áp dụng từ lg trở lên; nhỏ hơn thì xếp dọc).
+const BANK_COLUMNS = 'lg:grid lg:grid-cols-[4rem_3.5rem_minmax(0,1fr)_9rem_11rem_7.5rem_6.5rem] lg:items-center lg:gap-x-4';
 
 type QuestionDraft = {
   grade: string;
@@ -83,7 +81,6 @@ type QuestionDraft = {
   optionB: string;
   optionC: string;
   optionD: string;
-  options: string;
   bad: string;
   correct: string;
   hint: string;
@@ -112,7 +109,6 @@ function draftFrom(question: Question): QuestionDraft {
     optionB: optMap['B'] || '',
     optionC: optMap['C'] || '',
     optionD: optMap['D'] || '',
-    options: question.options?.map(option => option.key + '. ' + option.value).join('\n') ?? '',
     bad: question.bad.join('\n'),
     correct: question.correct.join('\n'),
     hint: question.hint,
@@ -131,20 +127,83 @@ function repairLabel(kind: QuestionKind) {
   return 'Viết lại phép biến đổi cho đúng.';
 }
 
-function parseOptionLines(value: string) {
-  return value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
-    const match = line.match(/^([A-Z])\s*[.):-]\s*(.+)$/i);
-    return match ? { key: match[1].toUpperCase(), value: match[2].trim() } : null;
-  }).filter((option): option is { key: string; value: string } => option !== null);
+function errorMessage(err: unknown) {
+  return err instanceof Error ? err.message : 'Lỗi không xác định';
 }
 
 function MathText({ value }: { value: string }) {
   return <span className="math parsed-math" dangerouslySetInnerHTML={{ __html: katex.renderToString(value, { throwOnError: false, strict: 'ignore', trust: false, output: 'htmlAndMathml' }) }} />;
 }
 
+function DifficultyMark({ value }: { value: string | null }) {
+  const level = value === 'Dễ' ? 1 : value === 'Trung bình' ? 2 : value === 'Khó' ? 3 : 0;
+  return (
+    <span className="inline-flex items-center gap-2 text-xs">
+      <span aria-hidden className="flex gap-[3px]">
+        {[1, 2, 3].map(i => (
+          <span key={i} className={`size-[7px] rounded-full ${i <= level ? 'bg-[#ceac79]' : 'border border-[#3a525c]'}`} />
+        ))}
+      </span>
+      <span className={level ? 'text-[#d9cfbb]' : 'text-[#6c827a] italic'}>{value || 'Chưa gắn mức'}</span>
+    </span>
+  );
+}
+
+function Segmented<T extends string | number>({ label, value, options, onChange }: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex items-center gap-3 min-w-0 max-w-full">
+      <span className="text-xs text-[#8ca097]">{label}</span>
+      <div className="flex min-w-0 overflow-x-auto rounded-md border border-[#2b414a] bg-[#0b171d] p-0.5">
+        {options.map(option => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+            className={`px-2.5 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-[#deb97b] ${
+              value === option.value ? 'bg-[#ceac79] text-[#0f2026]' : 'text-[#93a69e] hover:text-[#f0ece1]'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SyncButton({ sync, pending, onSync }: { sync: SyncState; pending: number; onSync: () => void }) {
+  const busy = sync.state === 'syncing';
+  const failed = sync.state === 'error';
+  const label = busy ? 'Đang đồng bộ…'
+    : failed ? 'Chưa lên Cloud · Thử lại'
+    : pending ? `${pending} thay đổi chưa đồng bộ`
+    : sync.state === 'synced' ? 'Đã đồng bộ Cloud' : 'Đồng bộ Cloud';
+  return (
+    <button
+      type="button"
+      onClick={onSync}
+      disabled={busy}
+      title={failed ? sync.error : 'Gửi thay đổi trên máy này lên Cloud và tải bản mới nhất về'}
+      className={`inline-flex items-center gap-2 h-9 px-3 rounded-md border text-xs font-medium transition-colors disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-[#deb97b] ${
+        failed ? 'border-[#7a3b3b] bg-[#2a1717] text-[#ffb0a3] hover:bg-[#351c1c]' : 'border-[#2f4853] bg-[#12232b] text-[#b9c9c2] hover:bg-[#182d36]'
+      }`}
+    >
+      {failed ? <CloudOff size={15} /> : <Cloud size={15} className={busy ? 'animate-pulse text-[#deb97b]' : pending ? 'text-[#e8b35c]' : 'text-[#6dc797]'} />}
+      {label}
+    </button>
+  );
+}
+
 export default function QuestionBankPage() {
   const { isAdmin, loading } = useAuth();
   const [content, setContent] = useState<LocalContent>(DEFAULT_LOCAL_CONTENT);
+  const [hydrated, setHydrated] = useState(false);
   const [activeTab, setActiveTab] = useState<'bank' | 'case' | 'import'>('bank');
   const [importMode, setImportMode] = useState<'json' | 'latex'>('json');
 
@@ -174,44 +233,22 @@ export default function QuestionBankPage() {
   const [editMessage, setEditMessage] = useState('');
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  // Cloud sync
+  const [sync, setSync] = useState<SyncState>({ state: 'idle' });
+  const contentRef = useRef(content);
 
-  const completeBank = useMemo(() => allQuestions(content), [content]);
-  const bank = completeBank;
-  const maxQuestionId = useMemo(() => Math.max(0, ...completeBank.map(q => q.id)), [completeBank]);
+  const bank = useMemo(() => allQuestions(content), [content]);
+  const maxQuestionId = useMemo(() => Math.max(0, ...bank.map(q => q.id)), [bank]);
 
-  // Lọc danh sách câu hỏi Tab 1
-  const visibleQuestions = useMemo(() => {
-    let list = bank;
-    if (filter === 'unset') list = bank.filter(q => !q.difficulty);
-    else if (filter !== 'all') list = bank.filter(q => q.difficulty === filter);
+  const visibleQuestions = useMemo(() => bank.filter(q =>
+    (selectedGrade === 'all' || q.grade === selectedGrade)
+    && (filter === 'all' || (filter === 'unset' ? !q.difficulty : q.difficulty === filter))
+  ), [bank, filter, selectedGrade]);
 
-    if (selectedGrade !== 'all') {
-      list = list.filter(q => q.grade === selectedGrade);
-    }
-
-    return list;
-  }, [bank, filter, selectedGrade]);
-
-  // Phân trang & Thu gọn/Mở rộng cho Tab 1
+  // Phân trang
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [expandedIds, setExpandedIds] = useState<number[]>([]);
-
-  function toggleExpand(id: number) {
-    setExpandedIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-  }
-
-  function expandAll() {
-    setExpandedIds(paginatedQuestions.map(q => q.id));
-  }
-
-  function collapseAll() {
-    setExpandedIds([]);
-  }
+  const [pageSize, setPageSize] = useState(20);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -220,6 +257,8 @@ export default function QuestionBankPage() {
   const totalItems = visibleQuestions.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const safePage = Math.min(Math.max(1, currentPage), totalPages);
+  const firstShown = Math.min((safePage - 1) * pageSize + 1, totalItems);
+  const lastShown = Math.min(safePage * pageSize, totalItems);
 
   const paginatedQuestions = useMemo(() => {
     const start = (safePage - 1) * pageSize;
@@ -244,56 +283,55 @@ export default function QuestionBankPage() {
 
   function goToPage(page: number) {
     setCurrentPage(page);
-    const listElem = document.getElementById('question-list-top');
-    if (listElem) {
-      listElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    document.getElementById('question-list-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   const assignedQuestionIds = questionIdsForCase(content, CASE_01);
-  const editingQuestion = editingId === null ? null : completeBank.find(question => question.id === editingId) ?? null;
+  const editingQuestion = editingId === null ? null : bank.find(question => question.id === editingId) ?? null;
 
-  const loadCloudQuestions = useCallback(async (currentContent: LocalContent) => {
-    try {
-      setIsSyncing(true);
-      setCloudSyncStatus('syncing');
-      const dbQuestions = await fetchQuestionsFromDb();
-      if (dbQuestions.length === 0) {
-        await seedQuestionsIfEmpty(QUESTION_BANK);
-        setCloudSyncStatus('synced');
-        return;
-      }
-
-      const defaultIds = new Set(QUESTION_BANK.map(q => q.id));
-      const cloudCustom = dbQuestions.filter(q => !defaultIds.has(q.id));
-      const cloudOverrides = dbQuestions.filter(q => defaultIds.has(q.id));
-
-      const nextContent: LocalContent = {
-        ...currentContent,
-        customQuestions: cloudCustom,
-        questionOverrides: cloudOverrides,
-      };
-      setContent(nextContent);
-      writeLocalContent(nextContent);
-      setCloudSyncStatus('synced');
-    } catch (err) {
-      console.warn('Lỗi khi tải câu hỏi từ Cloud:', err);
-      setCloudSyncStatus('error');
-    } finally {
-      setIsSyncing(false);
+  /**
+   * Đẩy pendingSyncIds lên Cloud, rồi (nếu pull) tải bản mới nhất về ghép vào.
+   * Bài nào bị sửa tiếp trong lúc đang gửi thì vẫn giữ trong pending cho lần sau.
+   */
+  const syncNow = useCallback(async (pull: boolean, source?: LocalContent) => {
+    setSync({ state: 'syncing' });
+    const push = await pushPendingQuestions(source ?? contentRef.current)
+      .catch((err): Awaited<ReturnType<typeof pushPendingQuestions>> => ({ synced: [], error: errorMessage(err) }));
+    let cloud: Question[] | null = null;
+    let pullError: string | undefined;
+    if (pull) {
+      try { cloud = await fetchQuestionsFromDb(); } catch (err) { pullError = errorMessage(err); }
     }
+    const sent = new Map(push.synced.map(entry => [entry.id, entry.snapshot]));
+    setContent(prev => {
+      const next = {
+        ...prev,
+        pendingSyncIds: prev.pendingSyncIds.filter(id => !sent.has(id) || findLocalQuestion(prev, id) !== sent.get(id)),
+      };
+      return cloud ? mergeCloudQuestions(next, cloud) : next;
+    });
+    const error = push.error ?? pullError;
+    setSync(error ? { state: 'error', error } : { state: 'synced' });
   }, []);
 
   useEffect(() => {
     const initial = readLocalContent();
     setContent(initial);
-    loadCloudQuestions(initial);
-  }, [loadCloudQuestions]);
+    setHydrated(true);
+    syncNow(true, initial);
+  }, [syncNow]);
 
-  function persist(next: LocalContent, feedback: string) {
-    setContent(next);
-    writeLocalContent(next);
+  useEffect(() => {
+    contentRef.current = content;
+    if (hydrated) writeLocalContent(content);
+  }, [content, hydrated]);
+
+  /** Lưu thay đổi trên máy; changedIds (nếu có) được đánh dấu chờ và gửi lên Cloud ngay. */
+  function persist(next: LocalContent, feedback: string, changedIds: number[] = []) {
+    const withPending = changedIds.length ? { ...next, pendingSyncIds: [...new Set([...next.pendingSyncIds, ...changedIds])] } : next;
+    setContent(withPending);
     setMessage(feedback);
+    if (changedIds.length) syncNow(false, withPending);
   }
 
   function storeQuestion(question: Question, feedback: string) {
@@ -301,19 +339,7 @@ export default function QuestionBankPage() {
     const next = isCustom
       ? { ...content, customQuestions: content.customQuestions.map(item => item.id === question.id ? question : item) }
       : { ...content, questionOverrides: [...content.questionOverrides.filter(item => item.id !== question.id), question] };
-    persist(next, feedback);
-    syncQuestionToDb(question).then(res => {
-      if (res.success) {
-        setCloudSyncStatus('synced');
-      } else {
-        console.warn('Lỗi đồng bộ lên Supabase:', res.error);
-      }
-    });
-  }
-
-  function setDifficulty(question: Question, difficulty: string) {
-    const value = difficulty === 'Dễ' || difficulty === 'Trung bình' || difficulty === 'Khó' ? difficulty : null;
-    storeQuestion({ ...question, difficulty: value, givenLine: value === 'Dễ' ? (question.errorLine ?? 1) + 1 : null }, 'Đã cập nhật mức độ cho Bài ' + question.id + '.');
+    persist(next, feedback, [question.id]);
   }
 
   function openEditor(question: Question) {
@@ -321,7 +347,6 @@ export default function QuestionBankPage() {
     setDraft(draftFrom(question));
     setEditMessage('');
   }
-
 
   function saveEdit() {
     if (!editingQuestion || !draft) return;
@@ -420,22 +445,15 @@ export default function QuestionBankPage() {
     setPendingDeleteId(question.id);
   }
 
-  async function confirmDelete() {
+  function confirmDelete() {
     if (pendingDeleteId === null) return;
     const idToDelete = pendingDeleteId;
     persist(
-      {
-        ...content,
-        customQuestions: content.customQuestions.filter(item => item.id !== idToDelete),
-        questionOverrides: content.questionOverrides.filter(item => item.id !== idToDelete),
-      },
-      'Đã xóa Bài ' + idToDelete + ' khỏi kho.'
+      { ...content, customQuestions: content.customQuestions.filter(item => item.id !== idToDelete) },
+      'Đã xóa Bài ' + idToDelete + ' khỏi kho.',
+      [idToDelete],
     );
     setPendingDeleteId(null);
-    const delRes = await deleteQuestionFromDb(idToDelete);
-    if (delRes.success) {
-      setCloudSyncStatus('synced');
-    }
   }
 
   function assignQuestion(roomIndex: number, questionId: number) {
@@ -452,14 +470,15 @@ export default function QuestionBankPage() {
   }
 
   function exportContent() {
-    const blob = new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' });
+    const { customQuestions, questionOverrides, caseQuestionIds } = content;
+    const blob = new Blob([JSON.stringify({ customQuestions, questionOverrides, caseQuestionIds }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = 'erase-kho-bai-tap.json';
     link.click();
     URL.revokeObjectURL(url);
-    setMessage('Đã xuất dữ liệu Kho bài tập.');
+    setMessage('Đã tải bản sao kho đề về máy.');
   }
 
   // --- JSON IMPORT LOGIC ---
@@ -500,30 +519,16 @@ export default function QuestionBankPage() {
     }
   }
 
-  async function handleSaveJsonQuestions() {
+  function handleSaveJsonQuestions() {
     if (jsonParsedQuestions.length === 0) return;
-    try {
-      // 1. Lưu vào LocalStorage
-      const nextCustom = [...content.customQuestions, ...jsonParsedQuestions];
-      persist(
-        { ...content, customQuestions: nextCustom },
-        `Đã nhập thành công ${jsonParsedQuestions.length} câu hỏi vào kho trên thiết bị.`
-      );
-
-      // 2. Đồng bộ lên Supabase
-      const syncRes = await syncBatchQuestionsToDb(jsonParsedQuestions);
-      if (syncRes.success) {
-        setMessage(`Đã lưu ${jsonParsedQuestions.length} câu hỏi vào thiết bị và đồng bộ Supabase.`);
-        setCloudSyncStatus('synced');
-      }
-
-      setJsonParsedQuestions([]);
-      setJsonText('');
-      setActiveTab('bank');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Lỗi khi lưu dữ liệu';
-      setJsonErrors([msg]);
-    }
+    persist(
+      { ...content, customQuestions: [...content.customQuestions, ...jsonParsedQuestions] },
+      `Đã thêm ${jsonParsedQuestions.length} câu hỏi vào kho.`,
+      jsonParsedQuestions.map(q => q.id),
+    );
+    setJsonParsedQuestions([]);
+    setJsonText('');
+    setActiveTab('bank');
   }
 
   function copyTemplateJson() {
@@ -542,7 +547,7 @@ export default function QuestionBankPage() {
     setMessage(result.length ? 'Đã đọc được ' + result.length + ' câu. Kiểm tra thẻ phân tích trước khi lưu.' : 'Chưa đọc được câu hỏi theo cấu trúc 1–7.');
   }
 
-  async function saveParsedLatex() {
+  function saveParsedLatex() {
     if (!parsed.length) return;
     const newQuestions = parsed.map(item => item.question);
     const nextIds = [...assignedQuestionIds];
@@ -553,11 +558,8 @@ export default function QuestionBankPage() {
       newQuestions.length === CASE_01.rooms.length
         ? 'Đã thêm ' + newQuestions.length + ' bài dưới trạng thái Cần duyệt và gán lần lượt vào các phòng.'
         : 'Đã thêm Bài ' + newQuestions[0].id + ' và gán vào ' + ROOM_NAMES[Number(latexTargetRoom)] + '.',
+      newQuestions.map(q => q.id),
     );
-    const syncRes = await syncBatchQuestionsToDb(newQuestions);
-    if (syncRes.success) {
-      setCloudSyncStatus('synced');
-    }
     setParsed([]);
     setLatex('');
     setActiveTab('bank');
@@ -580,494 +582,321 @@ export default function QuestionBankPage() {
     );
   }
 
+  const tabs = [
+    { id: 'bank', label: `Kho bài (${bank.length})` },
+    { id: 'case', label: `Gán phòng Vụ ${CASE_01.number}` },
+    { id: 'import', label: 'Nhập đề' },
+  ] as const;
+
   return (
     <main className="min-h-screen bg-[#0d1a20] text-[#e8e4d8] font-sans">
-      {/* ==================== GLOBAL TOPBAR ==================== */}
       <AppHeader currentView="question-bank" />
 
-      {/* ==================== HERO STATS & ACTIONS ==================== */}
-      <section className="py-4 px-6 border-b border-[#22353e] bg-[#0f2128]">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-[1440px] mx-auto w-full">
+      {/* ==================== TIÊU ĐỀ, ĐỒNG BỘ & TAB ==================== */}
+      <header className="border-b border-[#22353e] bg-[#0f2128]">
+        <div className="max-w-[1200px] mx-auto px-4 sm:px-6 pt-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
-            <span className="flex items-center gap-1.5 text-xs text-[#ceac79] font-bold tracking-wider mb-1">
-              <Sparkles size={14} /> HỆ THỐNG BIÊN SOẠN TOÁN TRINH THÁM
-            </span>
-            <h1 className="text-xl md:text-2xl font-serif text-[#f2ebd9] m-0">Quản trị nội dung & Đề bài</h1>
+            <h1 className="font-serif text-2xl text-[#f2ebd9] m-0">Kho đề</h1>
+            <p className="text-xs text-[#8fa298] mt-1 mb-0">
+              {bank.length} bài, trong đó {content.customQuestions.length} bài tự tạo. Vụ {CASE_01.number} đang dùng {CASE_01.rooms.length} bài.
+            </p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="px-4 py-2 bg-[#14262e] border border-[#2b414a] rounded-lg text-center min-w-[90px] shadow-sm">
-              <b className="block text-lg font-bold text-[#ffd78a]">{completeBank.length}</b>
-              <small className="text-[11px] text-[#8fa298] font-medium">Tổng số bài</small>
-            </div>
-            <div className="px-4 py-2 bg-[#14262e] border border-[#2b414a] rounded-lg text-center min-w-[90px] shadow-sm">
-              <b className="block text-lg font-bold text-[#54c48a]">{CASE_01.rooms.length}/{CASE_01.rooms.length}</b>
-              <small className="text-[11px] text-[#8fa298] font-medium">Phòng đã gán</small>
-            </div>
-            <div className="px-4 py-2 bg-[#14262e] border border-[#2b414a] rounded-lg text-center min-w-[90px] shadow-sm">
-              <b className="block text-lg font-bold text-[#ceac79]">{content.customQuestions.length}</b>
-              <small className="text-[11px] text-[#8fa298] font-medium">Bài tự tạo</small>
-            </div>
-            <div className="flex items-center gap-2 ml-2">
-              <Button
-                onClick={() => loadCloudQuestions(content)}
-                disabled={isSyncing}
-                title="Tải lại và đồng bộ toàn bộ dữ liệu mới nhất từ Supabase Cloud"
-                className="bg-[#19323d] hover:bg-[#224250] text-[#a4c5d2] border border-[#3b5a66] text-xs h-9 px-3 gap-1.5 font-medium rounded-lg shadow-sm"
-              >
-                <Cloud size={15} className={isSyncing ? 'animate-pulse text-[#deb97b]' : 'text-[#54c48a]'} />
-                <span>{isSyncing ? 'Đang tải...' : 'Đồng bộ Cloud'}</span>
-              </Button>
-              <Button
-                onClick={exportContent}
-                title="Tải toàn bộ kho bài về máy dưới dạng JSON"
-                className="bg-[#ceac79] hover:bg-[#deb97b] text-[#0f2026] text-xs h-9 px-3 gap-1.5 font-bold rounded-lg shadow-sm"
-              >
-                <Download size={15} /> Xuất JSON
-              </Button>
-            </div>
+          <div className="flex items-center gap-2">
+            <SyncButton sync={sync} pending={content.pendingSyncIds.length} onSync={() => syncNow(true)} />
+            <Button
+              variant="ghost"
+              onClick={exportContent}
+              title="Tải bản sao toàn bộ kho đề về máy (JSON)"
+              className="h-9 px-3 gap-1.5 text-xs text-[#ceac79] hover:bg-[#ceac79]/10 hover:text-[#deb97b]"
+            >
+              <Download size={15} /> Tải bản sao
+            </Button>
           </div>
         </div>
-      </section>
+        <nav className="max-w-[1200px] mx-auto px-4 sm:px-6 mt-4 flex gap-6 overflow-x-auto" role="tablist">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-3 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-[#deb97b] ${
+                activeTab === tab.id ? 'border-[#deb97b] text-[#f2ebd9]' : 'border-transparent text-[#8ca097] hover:text-[#eee4d3]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </header>
 
-      {/* Thông báo thao tác */}
-      {message && (
-        <div className="bg-[#17332c] border-b border-[#2d5c4e] px-6 py-2.5 text-xs text-[#b8ebd8] flex items-center justify-between">
-          <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-[#54c48a]" /> {message}</span>
-          <button onClick={() => setMessage('')} className="text-[#8fa8a2] hover:text-white px-1">✕</button>
+      {sync.state === 'error' && (
+        <div className="bg-[#2a1717] border-b border-[#5c2e2e] px-6 py-2.5 text-xs text-[#ffb0a3]">
+          <div className="max-w-[1200px] mx-auto flex items-center gap-2">
+            <CloudOff size={15} className="shrink-0" />
+            Không kết nối được Cloud ({sync.error}). Thay đổi vẫn được giữ trên máy này và sẽ gửi lại khi bạn bấm Thử lại.
+          </div>
         </div>
       )}
 
-      {/* ==================== 3 TAB ĐIỀU HƯỚNG CHÍNH ==================== */}
-      <nav className="bg-[#0a151b] border-b border-[#22353e] px-6">
-        <div className="max-w-[1440px] mx-auto flex items-center gap-2 overflow-x-auto">
-          <button
-            className={`flex items-center gap-2.5 px-5 py-3.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'bank'
-                ? 'border-[#deb97b] text-[#deb97b] bg-[#deb97b]/10'
-                : 'border-transparent text-[#8ca097] hover:text-[#eee4d3] hover:bg-white/5'
-            }`}
-            onClick={() => setActiveTab('bank')}
-          >
-            <FolderOpen size={16} /> 1. Kho câu hỏi & Bài tập ({completeBank.length})
-          </button>
-          <button
-            className={`flex items-center gap-2.5 px-5 py-3.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'case'
-                ? 'border-[#deb97b] text-[#deb97b] bg-[#deb97b]/10'
-                : 'border-transparent text-[#8ca097] hover:text-[#eee4d3] hover:bg-white/5'
-            }`}
-            onClick={() => setActiveTab('case')}
-          >
-            <Link2 size={16} /> 2. Phân phối phòng Vụ án {CASE_01.number}
-          </button>
-          <button
-            className={`flex items-center gap-2.5 px-5 py-3.5 text-xs md:text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'import'
-                ? 'border-[#deb97b] text-[#deb97b] bg-[#deb97b]/10'
-                : 'border-transparent text-[#8ca097] hover:text-[#eee4d3] hover:bg-white/5'
-            }`}
-            onClick={() => setActiveTab('import')}
-          >
-            <Upload size={16} /> 3. Trung tâm nhập đề (JSON / LaTeX)
-          </button>
+      {message && (
+        <div className="bg-[#17332c] border-b border-[#2d5c4e] px-6 py-2.5 text-xs text-[#b8ebd8]">
+          <div className="max-w-[1200px] mx-auto flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2"><CheckCircle2 size={15} className="text-[#54c48a] shrink-0" /> {message}</span>
+            <button onClick={() => setMessage('')} aria-label="Đóng thông báo" className="text-[#8fa8a2] hover:text-white px-1">✕</button>
+          </div>
         </div>
-      </nav>
+      )}
 
-      {/* ==================== WORKSPACE BODY ==================== */}
-      <div className="max-w-[1440px] mx-auto px-6 py-6">
-        {/* ==================== TAB 1: KHO CÂU HỎI (QUESTION BANK) ==================== */}
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-6">
+        {/* ==================== TAB 1: KHO BÀI ==================== */}
         {activeTab === 'bank' && (
-          <section className="space-y-5">
-            {/* Toolbar bộ lọc */}
-            <div className="bg-[#12232b] border border-[#263c45] rounded-xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-md">
-              <div className="flex items-center gap-6 flex-wrap">
-                {/* Filter Grade */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-semibold text-[#8ca097] mr-1">Lớp:</span>
-                  <button
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all border ${
-                      selectedGrade === 'all'
-                        ? 'bg-[#ceac79] text-[#0f2026] border-[#deb97b] shadow-sm'
-                        : 'bg-[#162932] text-[#93a69e] border-[#31464f] hover:text-white hover:border-[#455f6b]'
-                    }`}
-                    onClick={() => setSelectedGrade('all')}
-                  >
-                    Tất cả
-                  </button>
-                  {[6, 7, 8, 9].map(grade => (
-                    <button
-                      key={grade}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold transition-all border ${
-                        selectedGrade === grade
-                          ? 'bg-[#ceac79] text-[#0f2026] border-[#deb97b] shadow-sm'
-                          : 'bg-[#162932] text-[#93a69e] border-[#31464f] hover:text-white hover:border-[#455f6b]'
-                      }`}
-                      onClick={() => setSelectedGrade(grade)}
-                    >
-                      Lớp {grade}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Filter Difficulty */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-semibold text-[#8ca097] mr-1">Mức độ:</span>
-                  {FILTERS.map(item => (
-                    <button
-                      key={item.value}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold transition-all border ${
-                        filter === item.value
-                          ? 'bg-[#ceac79] text-[#0f2026] border-[#deb97b] shadow-sm'
-                          : 'bg-[#162932] text-[#93a69e] border-[#31464f] hover:text-[#f0ece1] hover:border-[#455f6b]'
-                      }`}
-                      onClick={() => setFilter(item.value)}
-                    >
-                      {item.label}
-                      {item.value === 'unset' && ` (${bank.filter(q => !q.difficulty).length})`}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          <section>
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-3 mb-5">
+              <Segmented
+                label="Lớp"
+                value={selectedGrade}
+                options={[{ value: 'all' as const, label: 'Tất cả' }, ...GRADES.map(g => ({ value: g, label: String(g) }))]}
+                onChange={setSelectedGrade}
+              />
+              <Segmented label="Mức độ" value={filter} options={FILTERS} onChange={setFilter} />
             </div>
 
-            {/* Anchor scroll khi chuyển trang */}
             <div id="question-list-top" className="scroll-mt-6" />
 
-            {/* Thanh thông tin số lượng & phân trang ở đầu bảng */}
-            {totalItems > 0 && (
-              <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-[#8fa298] px-1 pb-1">
-                <div className="flex items-center gap-3">
-                  <span>
-                    Đang hiển thị bài <strong>{Math.min((safePage - 1) * pageSize + 1, totalItems)}</strong> – <strong>{Math.min(safePage * pageSize, totalItems)}</strong> trong tổng số <strong>{totalItems}</strong> bài
-                  </span>
-                  <span className="text-[#3a505b]">|</span>
-                  <span className="font-mono text-[#ceac79]">
-                    Trang {safePage} / {totalPages}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={expandAll}
-                    className="text-[11px] text-[#ceac79] hover:underline cursor-pointer"
-                  >
-                    Mở rộng tất cả
-                  </button>
-                  <span className="text-[#3a505b]">·</span>
-                  <button
-                    type="button"
-                    onClick={collapseAll}
-                    className="text-[11px] text-[#8fa298] hover:underline cursor-pointer"
-                  >
-                    Thu gọn tất cả
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Danh sách câu hỏi */}
             {visibleQuestions.length === 0 ? (
-              <div className="p-16 text-center border-2 border-dashed border-[#2b414a] rounded-xl bg-[#102128]">
-                <ScanSearch size={36} className="mx-auto text-[#5f756e] mb-3" />
-                <p className="text-sm font-medium text-[#a0b2aa]">Không tìm thấy bài tập nào phù hợp với bộ lọc hiện tại.</p>
+              <div className="py-16 text-center border border-dashed border-[#2b414a] rounded-lg">
+                <ScanSearch size={32} className="mx-auto text-[#5f756e] mb-3" />
+                <p className="text-sm text-[#a0b2aa] m-0">Không có bài nào khớp bộ lọc.</p>
                 <Button
                   variant="ghost"
                   className="mt-3 text-xs text-[#ceac79] hover:bg-[#ceac79]/10"
                   onClick={() => { setSelectedGrade('all'); setFilter('all'); }}
                 >
-                  Xóa toàn bộ bộ lọc
+                  Bỏ bộ lọc
                 </Button>
               </div>
             ) : (
-              <div className="space-y-2">
-                {paginatedQuestions.map(question => {
-                  const isCustom = content.customQuestions.some(item => item.id === question.id);
-                  const isAssigned = assignedQuestionIds.includes(question.id);
-                  const assignedRoomIdx = assignedQuestionIds.indexOf(question.id);
-                  const isExpanded = expandedIds.includes(question.id);
+              <div className="rounded-lg border border-[#22353e] overflow-hidden">
+                {/* Hàng tiêu đề cột */}
+                <div className={`hidden ${BANK_COLUMNS} px-4 py-2.5 bg-[#0b171d] border-b border-[#22353e] text-[11px] font-medium text-[#7d938b]`}>
+                  <span>Mã</span>
+                  <span>Lớp</span>
+                  <span>Chủ đề</span>
+                  <span>Mức độ</span>
+                  <span>Phòng ở Vụ {CASE_01.number}</span>
+                  <span>Trạng thái</span>
+                  <span className="sr-only">Thao tác</span>
+                </div>
 
-                  return (
-                    <article
-                      key={question.id}
-                      className={`bg-[#12232b] border rounded-lg transition-all ${
-                        isExpanded
-                          ? 'border-[#deb97b]/60 shadow-lg'
-                          : 'border-[#263c45] hover:border-[#3d5a68]'
-                      }`}
-                    >
-                      {/* Dòng tóm tắt thu gọn (Click vào để mở/đóng chi tiết) */}
-                      <div
-                        onClick={() => toggleExpand(question.id)}
-                        className="flex items-center justify-between gap-3 px-3.5 py-2.5 cursor-pointer select-none group hover:bg-[#162b35]/60 transition-colors"
-                      >
-                        {/* Khối bên trái: Icon + Mã bài + Lớp + Chủ đề + Tags */}
-                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          <span className="text-[#7e968e] group-hover:text-[#deb97b] transition-colors shrink-0">
-                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                          </span>
+                <ul className="divide-y divide-[#1c2f37] m-0 p-0 list-none">
+                  {paginatedQuestions.map(question => {
+                    const isCustom = content.customQuestions.some(item => item.id === question.id);
+                    const roomIdx = assignedQuestionIds.indexOf(question.id);
+                    const room = roomIdx >= 0 ? CASE_01.rooms[roomIdx] : null;
+                    const isExpanded = expandedId === question.id;
+                    const status = STATUS[question.auditStatus] ?? STATUS.draft;
+                    const isPending = content.pendingSyncIds.includes(question.id);
 
-                          <span className="px-2 py-0.5 bg-[#09151a] border border-[#deb97b]/40 rounded font-mono font-bold text-xs text-[#deb97b] shrink-0">
-                            #{question.id}
-                          </span>
+                    return (
+                      <li key={question.id} className={isExpanded ? 'bg-[#10222a]' : 'bg-[#12232b]'}>
+                        <div className={`relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 px-4 py-3 ${BANK_COLUMNS} hover:bg-[#162b35] transition-colors`}>
+                          <span className="hidden lg:block text-xs tabular-nums text-[#ceac79] font-semibold">#{question.id}</span>
+                          <span className="hidden lg:block text-xs tabular-nums text-[#b5c5bd]">{question.grade}</span>
 
-                          <span className="text-xs px-2 py-0.5 rounded bg-[#1c313a] border border-[#2f4853] text-[#a5bbb1] font-semibold shrink-0">
-                            Lớp {question.grade}
-                          </span>
-
-                          <span className="font-serif text-sm text-[#f2ebd9] font-bold tracking-wide truncate max-w-[240px] sm:max-w-xs md:max-w-md lg:max-w-lg">
-                            {question.topic}
-                          </span>
-
-                          {question.difficulty && (
-                            <span className={`text-[11px] px-2 py-0.5 rounded font-semibold border shrink-0 hidden sm:inline-block ${
-                              question.difficulty === 'Dễ'
-                                ? 'bg-[#153428] text-[#78d6a8] border-[#295c47]'
-                                : question.difficulty === 'Trung bình'
-                                ? 'bg-[#3b2d18] text-[#ffd082] border-[#74552b]'
-                                : 'bg-[#381c1c] text-[#ff9e8b] border-[#6b3131]'
-                            }`}>
-                              {question.difficulty}
-                            </span>
-                          )}
-
-                          {isAssigned && (
-                            <span className="text-[11px] px-2 py-0.5 rounded bg-[#41341c] text-[#ffd98a] border border-[#836430] font-semibold hidden md:inline-flex items-center gap-1 shrink-0">
-                              ★ {ROOM_NAMES[assignedRoomIdx]}
-                            </span>
-                          )}
-
-                          <span className={`text-[11px] px-2 py-0.5 rounded font-semibold border hidden xl:inline-block shrink-0 ${
-                            question.auditStatus === 'approved'
-                              ? 'bg-[#153428] text-[#78d6a8] border-[#295c47]'
-                              : question.auditStatus === 'needs_review'
-                              ? 'bg-[#3b2d18] text-[#ffd082] border-[#74552b]'
-                              : 'bg-[#212f36] text-[#9fb1a9] border-[#384a53]'
-                          }`}>
-                            {question.auditStatus === 'approved' ? '✓ Đã duyệt' : question.auditStatus === 'needs_review' ? '⚠ Cần duyệt' : 'Bản nháp'}
-                          </span>
-                        </div>
-
-                        {/* Khối bên phải: Nút thao tác nhanh */}
-                        <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditor(question)}
-                            className="h-7 px-2.5 text-xs text-[#ceac79] hover:bg-[#ceac79]/10 gap-1"
-                            title="Chỉnh sửa câu hỏi"
+                          <button
+                            type="button"
+                            aria-expanded={isExpanded}
+                            onClick={() => setExpandedId(isExpanded ? null : question.id)}
+                            className="min-w-0 text-left flex items-start gap-2 group focus-visible:outline-2 focus-visible:outline-[#deb97b] rounded-sm after:absolute after:inset-0 after:content-['']"
                           >
-                            <Pencil size={13} />
-                            <span className="hidden sm:inline">Sửa</span>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeQuestion(question)}
-                            className="h-7 px-2 text-xs text-[#e58a74] hover:bg-[#e58a74]/10"
-                            title="Xóa câu hỏi"
-                          >
-                            <Trash2 size={13} />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Phần chi tiết mở rộng khi ấn vào dòng */}
-                      {isExpanded && (
-                        <div className="px-4 pb-4 pt-2 border-t border-[#1f333c] bg-[#0c181f]/40 space-y-3.5">
-                          {/* Header chi tiết: Chọn mức độ + Trạng thái */}
-                          <div className="flex items-center justify-between flex-wrap gap-2 text-xs text-[#8fa298] pt-1">
-                            <div className="flex items-center gap-2">
-                              <span>Mức độ:</span>
-                              <select
-                                value={question.difficulty ?? ''}
-                                onChange={e => setDifficulty(question, e.target.value)}
-                                className="bg-[#09151a] border border-[#304750] text-xs rounded px-2.5 py-1 text-[#f1ecdf] focus:border-[#deb97b] focus:outline-none"
-                              >
-                                <option value="">Chưa gắn mức</option>
-                                <option value="Dễ">* · Dễ (Khoanh dòng lỗi)</option>
-                                <option value="Trung bình">** · Trung bình</option>
-                                <option value="Khó">*** · Khó</option>
-                              </select>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-[#6c827a]">
-                                {isCustom ? '📌 Bài tự biên soạn' : '🏛️ Bài mẫu chuẩn hệ thống'}
+                            <ChevronDown size={15} className={`mt-0.5 shrink-0 text-[#6c827a] group-hover:text-[#deb97b] transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
+                            <span className="min-w-0">
+                              <span className="block font-serif text-[15px] leading-snug text-[#f2ebd9] truncate">
+                                <span className="lg:hidden tabular-nums text-[#ceac79] font-sans text-xs font-semibold mr-2">#{question.id}</span>
+                                {question.topic}
                               </span>
-                              {question.auditStatus !== 'approved' && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => approveQuestion(question)}
-                                  className="text-xs text-[#7ed8a7] hover:bg-[#7ed8a7]/10 h-7 gap-1"
-                                >
-                                  <CheckCircle2 size={13} /> Xác nhận đã duyệt
-                                </Button>
+                              {(isCustom || isPending) && (
+                                <span className="block text-[11px] text-[#7d938b] mt-0.5">
+                                  {isCustom && 'Bài tự tạo'}{isCustom && isPending && ', '}{isPending && <span className="text-[#e8b35c]">chưa lên Cloud</span>}
+                                </span>
                               )}
-                            </div>
+                            </span>
+                          </button>
+
+                          {/* Mobile: meta gộp một dòng; lg: tách cột */}
+                          <div className="col-start-1 flex flex-wrap items-center gap-x-4 gap-y-1 pl-[23px] text-xs text-[#8fa298] lg:contents lg:pl-0">
+                            <span className="lg:hidden">Lớp {question.grade}</span>
+                            <DifficultyMark value={question.difficulty} />
+                            <span className="truncate">
+                              {room ? <><span className="tabular-nums text-[#ceac79] mr-1.5">{room.no}</span><span className="text-[#d9cfbb]">{room.name}</span></> : <span className="hidden lg:inline text-[#4f6670]">—</span>}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-[#b5c5bd]">
+                              <span className={`size-1.5 rounded-full ${status.dot}`} /> {status.label}
+                            </span>
                           </div>
 
-                          {/* Khối hiển thị công thức lời giải lỗi & lời giải đúng */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                            {/* Cột 1: Lời giải có lỗi */}
-                            <div className="bg-[#0a161b] border border-[#1f333c] rounded-lg p-3 space-y-1.5">
-                              <span className="text-[10px] uppercase font-bold text-[#e59b6b] tracking-wider flex items-center gap-1.5 pb-1 border-b border-[#1f333c]">
-                                <AlertTriangle size={13} /> Lời giải có lỗi (Đang trình bày):
-                              </span>
-                              <div className="space-y-1 pt-0.5">
-                                {question.bad.map((line, idx) => (
-                                  <div
-                                    key={idx}
-                                    className={`text-xs md:text-sm leading-relaxed px-2 py-0.5 rounded transition-colors ${
-                                      idx === question.errorLine
-                                        ? 'bg-[#ce8c46]/20 border-l-4 border-[#ce8c46] text-[#ffd5a8]'
-                                        : 'text-[#c8d4ce]'
-                                    }`}
-                                  >
-                                    <span className="font-mono text-[11px] text-[#698078] mr-2">[{idx + 1}]</span>
-                                    <MathText value={line} />
-                                    {idx === question.errorLine && (
-                                      <span className="text-[10px] text-[#ffbf78] ml-2 font-bold uppercase tracking-wider">
-                                        ← Bước có lỗi
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Cột 2: Lời giải sửa đúng */}
-                            <div className="bg-[#0a161b] border border-[#1f333c] rounded-lg p-3 space-y-1.5">
-                              <span className="text-[10px] uppercase font-bold text-[#6dc797] tracking-wider flex items-center gap-1.5 pb-1 border-b border-[#1f333c]">
-                                <CheckCircle2 size={13} /> Lời giải sửa chính xác:
-                              </span>
-                              <div className="space-y-1 pt-0.5">
-                                {question.correct.map((line, idx) => (
-                                  <div key={idx} className="text-xs md:text-sm leading-relaxed px-2 py-0.5 text-[#c8d4ce]">
-                                    <span className="font-mono text-[11px] text-[#698078] mr-2">[{idx + 1}]</span>
-                                    <MathText value={line} />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Chi tiết tương tác & đáp án */}
-                          <div className="flex flex-wrap items-center gap-2.5 text-xs bg-[#0a161b] p-2.5 rounded-lg border border-[#1f333c] text-[#9fb0a7]">
-                            <span>Hình thức sửa: <strong className="text-[#f1ecdf]">{repairLabel(question.kind)}</strong></span>
-                            <span>•</span>
-                            <span>Đáp án đúng: <strong className="text-[#ffd78a] font-mono bg-[#ffd78a]/10 px-2 py-0.5 rounded border border-[#ffd78a]/30">{String(question.answer)}</strong></span>
-                            {question.options && question.options.length > 0 && (
-                              <>
-                                <span>•</span>
-                                <span>Các lựa chọn: {question.options.map(o => `${o.key}. ${o.value}`).join(' | ')}</span>
-                              </>
-                            )}
-                            {question.hint && (
-                              <>
-                                <span>•</span>
-                                <span className="text-[#b5c7bc]">Gợi ý: <em>{question.hint}</em></span>
-                              </>
+                          <div className="relative z-10 col-start-2 row-start-1 row-span-2 lg:col-auto lg:row-auto flex items-center justify-end gap-0.5">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEditor(question)}
+                              className="h-8 px-2.5 text-xs text-[#ceac79] hover:bg-[#ceac79]/10 hover:text-[#deb97b] gap-1"
+                            >
+                              <Pencil size={13} /> Sửa
+                            </Button>
+                            {isCustom && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeQuestion(question)}
+                                className="h-8 w-8 p-0 text-[#c98472] hover:bg-[#e58a74]/10 hover:text-[#e58a74]"
+                                aria-label={`Xóa bài ${question.id}`}
+                                title="Xóa bài"
+                              >
+                                <Trash2 size={14} />
+                              </Button>
                             )}
                           </div>
                         </div>
-                      )}
-                    </article>
-                  );
-                })}
+
+                        {isExpanded && (
+                          <div className="px-4 lg:pl-[calc(7.5rem+2rem+23px)] pb-5 pt-1 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div>
+                                <h3 className="text-xs font-semibold text-[#e59b6b] mb-2 flex items-center gap-1.5">
+                                  <AlertTriangle size={13} /> Lời giải có lỗi
+                                </h3>
+                                <ol className="m-0 p-0 list-none space-y-0.5">
+                                  {question.bad.map((line, idx) => {
+                                    const isError = idx === question.errorLine;
+                                    return (
+                                      <li
+                                        key={idx}
+                                        className={`grid grid-cols-[1.5rem_minmax(0,1fr)] items-baseline py-1 pl-2 pr-2 text-sm border-l-2 ${
+                                          isError ? 'border-[#ce8c46] bg-[#ce8c46]/12 text-[#ffd5a8]' : 'border-transparent text-[#c8d4ce]'
+                                        }`}
+                                      >
+                                        <span className="text-[11px] tabular-nums text-[#698078]">{idx + 1}</span>
+                                        <span className="min-w-0 overflow-x-auto">
+                                          <MathText value={line} />
+                                          {isError && <span className="ml-2 text-[11px] font-medium text-[#ffbf78]">dòng lỗi</span>}
+                                        </span>
+                                      </li>
+                                    );
+                                  })}
+                                </ol>
+                              </div>
+                              <div>
+                                <h3 className="text-xs font-semibold text-[#6dc797] mb-2 flex items-center gap-1.5">
+                                  <CheckCircle2 size={13} /> Lời giải đúng
+                                </h3>
+                                <ol className="m-0 p-0 list-none space-y-0.5">
+                                  {question.correct.map((line, idx) => (
+                                    <li key={idx} className="grid grid-cols-[1.5rem_minmax(0,1fr)] items-baseline py-1 pl-2 pr-2 text-sm border-l-2 border-transparent text-[#c8d4ce]">
+                                      <span className="text-[11px] tabular-nums text-[#698078]">{idx + 1}</span>
+                                      <span className="min-w-0 overflow-x-auto"><MathText value={line} /></span>
+                                    </li>
+                                  ))}
+                                </ol>
+                              </div>
+                            </div>
+
+                            <dl className="grid grid-cols-[6rem_minmax(0,1fr)] sm:grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-xs m-0 pt-3 border-t border-[#1f333c]">
+                              <dt className="text-[#7d938b]">Yêu cầu sửa</dt>
+                              <dd className="m-0 text-[#e8e4d8]">{question.repairLabel || repairLabel(question.kind)}</dd>
+                              <dt className="text-[#7d938b]">Đáp án</dt>
+                              <dd className="m-0 text-[#ffd78a] font-semibold">{String(question.answer)}</dd>
+                              {question.options && question.options.length > 0 && (
+                                <>
+                                  <dt className="text-[#7d938b]">Phương án</dt>
+                                  <dd className="m-0 text-[#c8d4ce]">{question.options.map(o => `${o.key}. ${o.value}`).join('   ')}</dd>
+                                </>
+                              )}
+                              {question.hint && (
+                                <>
+                                  <dt className="text-[#7d938b]">Gợi ý</dt>
+                                  <dd className="m-0 text-[#b5c7bc] italic">{question.hint}</dd>
+                                </>
+                              )}
+                            </dl>
+
+                            {question.auditStatus !== 'approved' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => approveQuestion(question)}
+                                className="h-8 text-xs gap-1.5 border-[#295c47] bg-transparent text-[#7ed8a7] hover:bg-[#7ed8a7]/10 hover:text-[#7ed8a7]"
+                              >
+                                <CheckCircle2 size={13} /> Đánh dấu đã duyệt
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             )}
 
-            {/* Thanh điều hướng phân trang bên dưới */}
             {totalItems > 0 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 pb-4 border-t border-[#1f333c] text-xs text-[#8fa298]">
-                <div className="flex items-center gap-3">
-                  <span>
-                    Hiển thị <strong>{Math.min((safePage - 1) * pageSize + 1, totalItems)}</strong> – <strong>{Math.min(safePage * pageSize, totalItems)}</strong> trong tổng số <strong>{totalItems}</strong> bài
-                  </span>
-                  <span className="text-[#3a505b]">|</span>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 text-xs text-[#8fa298]">
+                <div className="flex items-center gap-4">
+                  <span className="tabular-nums">{firstShown}–{lastShown} trong {totalItems} bài</span>
                   <label className="flex items-center gap-1.5">
-                    <span>Số bài/trang:</span>
+                    <span className="sr-only">Số bài mỗi trang</span>
                     <select
                       value={pageSize}
-                      onChange={e => {
-                        setPageSize(Number(e.target.value));
-                        setCurrentPage(1);
-                      }}
+                      onChange={e => setPageSize(Number(e.target.value))}
                       className="bg-[#09151a] border border-[#304750] rounded px-2 py-1 text-[#f1ecdf] focus:border-[#deb97b] focus:outline-none cursor-pointer"
                     >
-                      <option value={10}>10 bài/trang</option>
                       <option value={20}>20 bài/trang</option>
                       <option value={50}>50 bài/trang</option>
+                      <option value={100}>100 bài/trang</option>
                     </select>
                   </label>
                 </div>
 
                 {totalPages > 1 && (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={safePage === 1}
-                      onClick={() => goToPage(1)}
-                      className="h-8 w-8 p-0 text-[#8fa298] hover:text-[#f1ecdf] disabled:opacity-30 hover:bg-[#1a2f38]"
-                      title="Trang đầu"
-                    >
-                      <ChevronsLeft size={16} />
-                    </Button>
+                  <nav aria-label="Phân trang" className="flex items-center gap-1">
                     <Button
                       variant="ghost"
                       size="sm"
                       disabled={safePage === 1}
                       onClick={() => goToPage(safePage - 1)}
                       className="h-8 w-8 p-0 text-[#8fa298] hover:text-[#f1ecdf] disabled:opacity-30 hover:bg-[#1a2f38]"
-                      title="Trang trước"
+                      aria-label="Trang trước"
                     >
                       <ChevronLeft size={16} />
                     </Button>
-
-                    <div className="flex items-center gap-1 px-1">
-                      {pageNumbers.map((p, idx) =>
-                        typeof p === 'number' ? (
-                          <button
-                            key={idx}
-                            onClick={() => goToPage(p)}
-                            className={`h-8 min-w-[32px] px-2.5 rounded font-semibold text-xs transition-colors ${
-                              safePage === p
-                                ? 'bg-[#ceac79] text-[#0c181e] font-bold shadow-sm'
-                                : 'text-[#8fa298] hover:bg-[#1a2f38] hover:text-[#f1ecdf] border border-transparent hover:border-[#354b54]'
-                            }`}
-                          >
-                            {p}
-                          </button>
-                        ) : (
-                          <span key={idx} className="px-1 text-[#4f6772]">
-                            {p}
-                          </span>
-                        )
-                      )}
-                    </div>
-
+                    {pageNumbers.map((p, idx) =>
+                      typeof p === 'number' ? (
+                        <button
+                          key={idx}
+                          onClick={() => goToPage(p)}
+                          aria-current={safePage === p ? 'page' : undefined}
+                          className={`h-8 min-w-8 px-2 rounded text-xs tabular-nums transition-colors ${
+                            safePage === p ? 'bg-[#ceac79] text-[#0c181e] font-semibold' : 'text-[#8fa298] hover:bg-[#1a2f38] hover:text-[#f1ecdf]'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ) : (
+                        <span key={idx} className="px-1 text-[#4f6772]">…</span>
+                      )
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
                       disabled={safePage === totalPages}
                       onClick={() => goToPage(safePage + 1)}
                       className="h-8 w-8 p-0 text-[#8fa298] hover:text-[#f1ecdf] disabled:opacity-30 hover:bg-[#1a2f38]"
-                      title="Trang sau"
+                      aria-label="Trang sau"
                     >
                       <ChevronRight size={16} />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={safePage === totalPages}
-                      onClick={() => goToPage(totalPages)}
-                      className="h-8 w-8 p-0 text-[#8fa298] hover:text-[#f1ecdf] disabled:opacity-30 hover:bg-[#1a2f38]"
-                      title="Trang cuối"
-                    >
-                      <ChevronsRight size={16} />
-                    </Button>
-                  </div>
+                  </nav>
                 )}
               </div>
             )}
@@ -1099,7 +928,7 @@ export default function QuestionBankPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {CASE_01.rooms.map((room, index) => {
                 const currentQuestionId = assignedQuestionIds[index];
-                const currentQuestion = bank.find(q => q.id === currentQuestionId) || completeBank.find(q => q.id === currentQuestionId);
+                const currentQuestion = bank.find(q => q.id === currentQuestionId);
                 const clue = CASE_01.clues[index];
 
                 return (
@@ -1132,7 +961,7 @@ export default function QuestionBankPage() {
                         <span className="text-[10px] text-[#deb97b] font-semibold block mb-0.5 uppercase tracking-wider">
                           Dữ kiện mở khóa:
                         </span>
-                        <em className="text-[#d8e3dc]">"{clue?.text}"</em>
+                        <em className="text-[#d8e3dc]">&ldquo;{clue?.text}&rdquo;</em>
                       </div>
 
                       {/* Chọn bài gán */}
@@ -1722,7 +1551,7 @@ export default function QuestionBankPage() {
               Xóa Bài #{pendingDeleteId}?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-[#8ca097]">
-              Bài tập này sẽ bị xóa khỏi kho câu hỏi và cơ sở dữ liệu Cloud. Thao tác này không thể hoàn tác.
+              Bài sẽ bị xóa khỏi kho trên máy này và trên Cloud. Không thể hoàn tác.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2">

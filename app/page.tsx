@@ -17,7 +17,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { candidates, comparisonFeedback, verdict, isDetectionCorrect, isCorrectionCorrect } from '@/lib/game';
 import { CASE_01, CASES, getCase, type Direction, type CaseDefinition } from '@/lib/cases';
-import { defaultQuestionsForCase, questionsForCase, readLocalContent, writeLocalContent, QUESTION_BANK, type Question } from '@/lib/content';
+import { defaultQuestionsForCase, questionsForCase, readLocalContent, writeLocalContent, mergeCloudQuestions, type Question } from '@/lib/content';
 import { fetchQuestionsFromDb } from '@/lib/questions-db';
 import { tokeniseMath } from '@/lib/latex-question-parser';
 import { formatInvestigationTime, investigationReport, traceStatus, TRACE_STATUS_LABELS, type InvestigationRecord } from '@/lib/investigation-report';
@@ -296,19 +296,11 @@ export default function Home() {
     const initial = readLocalContent();
     setQuestions(questionsForCase(initial, caseData));
 
+    // Chỉ đọc từ Cloud; bài chưa đồng bộ (pendingSyncIds) vẫn giữ bản trên máy.
     fetchQuestionsFromDb().then(dbQuestions => {
-      if (dbQuestions.length > 0) {
-        const defaultIds = new Set(QUESTION_BANK.map(q => q.id));
-        const cloudCustom = dbQuestions.filter(q => !defaultIds.has(q.id));
-        const cloudOverrides = dbQuestions.filter(q => defaultIds.has(q.id));
-        const nextContent = {
-          ...initial,
-          customQuestions: cloudCustom,
-          questionOverrides: cloudOverrides,
-        };
-        writeLocalContent(nextContent);
-        setQuestions(questionsForCase(nextContent, caseData));
-      }
+      const nextContent = mergeCloudQuestions(readLocalContent(), dbQuestions);
+      writeLocalContent(nextContent);
+      setQuestions(questionsForCase(nextContent, caseData));
     }).catch(err => {
       console.warn('Không thể nạp đề từ Cloud:', err);
     });
