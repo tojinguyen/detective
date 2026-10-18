@@ -39,7 +39,7 @@ export function CaseSelector({
             </h1>
 
             <p className="text-[#a6bcb3] text-xs sm:text-sm leading-relaxed mb-6">
-              Chào mừng thám tử <span className="text-[#f0ece1] font-semibold">{userName}</span> đến với Tổng cục điều tra E·RASE. Hãy chọn một hồ sơ bên dưới để theo dõi bối cảnh và nhận lệnh khám nghiệm hiện trường.
+              Hệ thống Erase đã kích hoạt. Chào mừng thám tử <span className="text-[#f0ece1] font-semibold">{userName}</span>! Hãy khắc phục các lỗi sai, thu thập manh mối và hoàn thành nhiệm vụ giải án nhé!
             </p>
 
             {/* Quick Stats Grid */}

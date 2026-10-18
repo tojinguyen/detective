@@ -18,6 +18,7 @@ import {
   Pencil,
   RotateCcw,
   ScanSearch,
+  Search,
   Sparkles,
   Trash2,
   Upload,
@@ -42,11 +43,10 @@ import {
   type QuestionKind,
   type QuestionOption,
 } from '@/lib/content';
-import { CASE_01 } from '@/lib/cases';
+import { CASE_01, CASES } from '@/lib/cases';
 import { parseLatexQuestionBank, tokeniseMath, type ParsedQuestion } from '@/lib/latex-question-parser';
 import { downloadJsonTemplate, parseQuestionsFromJson, QUESTION_TEMPLATE_JSON } from '@/lib/json-template';
 
-const ROOM_NAMES = CASE_01.rooms.map(room => room.name);
 const GRADES = [6, 7, 8, 9] as const;
 const FILTERS = [
   { value: 'all', label: 'Tất cả' },
@@ -65,7 +65,7 @@ const STATUS: Record<Question['auditStatus'], { label: string; dot: string }> = 
 };
 
 // Cột của bảng Kho bài (chỉ áp dụng từ lg trở lên; nhỏ hơn thì xếp dọc).
-const BANK_COLUMNS = 'lg:grid lg:grid-cols-[4rem_3.5rem_minmax(0,1fr)_9rem_11rem_7.5rem_6.5rem] lg:items-center lg:gap-x-4';
+const BANK_COLUMNS = 'lg:grid lg:grid-cols-[4rem_3.5rem_minmax(0,1fr)_9rem_12rem_7.5rem_6.5rem] lg:items-center lg:gap-x-4';
 
 type QuestionDraft = {
   grade: string;
@@ -133,6 +133,15 @@ function errorMessage(err: unknown) {
 
 function MathText({ value }: { value: string }) {
   return <span className="math parsed-math" dangerouslySetInnerHTML={{ __html: katex.renderToString(value, { throwOnError: false, strict: 'ignore', trust: false, output: 'htmlAndMathml' }) }} />;
+}
+
+type Usage = { caseNo: string; roomNo: string };
+
+/** "P01 · Vụ 01, 02; P03 · Vụ 03" — gom các vụ dùng bài ở cùng một phòng. */
+function describeUsage(usages: Usage[]) {
+  const byRoom = new Map<string, string[]>();
+  usages.forEach(u => byRoom.set(u.roomNo, [...(byRoom.get(u.roomNo) ?? []), u.caseNo]));
+  return [...byRoom].map(([roomNo, cases]) => `P${roomNo} · Vụ ${cases.join(', ')}`).join('; ');
 }
 
 function DifficultyMark({ value }: { value: string | null }) {
@@ -216,6 +225,15 @@ export default function QuestionBankPage() {
   const [parsed, setParsed] = useState<ParsedQuestion[]>([]);
   const [latexTargetRoom, setLatexTargetRoom] = useState('0');
 
+  // Vụ án đang chọn ở tab Gán phòng (dùng chung cho nhập LaTeX)
+  const [caseId, setCaseId] = useState(CASE_01.id);
+  const selectedCase = CASES.find(c => c.id === caseId) ?? CASE_01;
+  const roomNames = selectedCase.rooms.map(room => room.name);
+  const [caseQuery, setCaseQuery] = useState('');
+  const [onlyChangedCases, setOnlyChangedCases] = useState(false);
+  const [pickerRoom, setPickerRoom] = useState<number | null>(null);
+  const [pickerQuery, setPickerQuery] = useState('');
+
   // JSON import state
   const [jsonText, setJsonText] = useState('');
   const [jsonParsedQuestions, setJsonParsedQuestions] = useState<Question[]>([]);
@@ -286,7 +304,43 @@ export default function QuestionBankPage() {
     document.getElementById('question-list-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  const assignedQuestionIds = questionIdsForCase(content, CASE_01);
+  const assignedQuestionIds = questionIdsForCase(content, selectedCase);
+
+  // Bài nào đang nằm ở phòng nào của vụ nào
+  const usageById = useMemo(() => {
+    const map = new Map<number, Usage[]>();
+    CASES.forEach(c => questionIdsForCase(content, c).forEach((id, index) => {
+      map.set(id, [...(map.get(id) ?? []), { caseNo: c.number, roomNo: c.rooms[index].no }]);
+    }));
+    return map;
+  }, [content]);
+  const usedQuestionCount = usageById.size;
+
+  // Danh sách vụ án (tab Gán phòng)
+  const changedCaseIds = useMemo(() => new Set(CASES
+    .filter(c => questionIdsForCase(content, c).some((id, i) => id !== c.defaultQuestionIds[i]))
+    .map(c => c.id)), [content]);
+  const visibleCases = useMemo(() => {
+    const query = caseQuery.trim().toLowerCase();
+    return CASES.filter(c =>
+      (!onlyChangedCases || changedCaseIds.has(c.id))
+      && (!query || c.number.includes(query) || c.title.toLowerCase().includes(query))
+    );
+  }, [caseQuery, onlyChangedCases, changedCaseIds]);
+  const changedRoomCount = assignedQuestionIds.filter((id, i) => id !== selectedCase.defaultQuestionIds[i]).length;
+
+  // Bộ chọn bài cho một phòng: lọc theo mã, chủ đề, "lớp N"; giới hạn số dòng hiển thị
+  const PICKER_LIMIT = 50;
+  const pickerMatches = useMemo(() => {
+    const terms = pickerQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return bank;
+    return bank.filter(q => {
+      const haystack = `#${q.id} ${q.id} ${q.topic} lớp ${q.grade} ${q.difficulty ?? ''}`.toLowerCase();
+      return terms.every(term => haystack.includes(term));
+    });
+  }, [bank, pickerQuery]);
+  const pickerResults = pickerMatches.slice(0, PICKER_LIMIT);
+  const pickerTotal = pickerMatches.length;
   const editingQuestion = editingId === null ? null : bank.find(question => question.id === editingId) ?? null;
 
   /**
@@ -438,8 +492,9 @@ export default function QuestionBankPage() {
   }
 
   function removeQuestion(question: Question) {
-    if (assignedQuestionIds.includes(question.id)) {
-      setMessage('Bài ' + question.id + ' đang được dùng trong Vụ ' + CASE_01.number + '. Hãy đổi bài ở phòng đó trước khi xóa.');
+    const usages = usageById.get(question.id);
+    if (usages) {
+      setMessage('Bài ' + question.id + ' đang được dùng ở ' + describeUsage(usages) + '. Hãy đổi bài ở các phòng đó trước khi xóa.');
       return;
     }
     setPendingDeleteId(question.id);
@@ -459,14 +514,14 @@ export default function QuestionBankPage() {
   function assignQuestion(roomIndex: number, questionId: number) {
     const ids = [...assignedQuestionIds];
     ids[roomIndex] = questionId;
-    persist({ ...content, caseQuestionIds: { ...content.caseQuestionIds, [CASE_01.id]: ids } }, 'Đã gán Bài ' + questionId + ' vào ' + ROOM_NAMES[roomIndex] + '.');
+    persist({ ...content, caseQuestionIds: { ...content.caseQuestionIds, [selectedCase.id]: ids } }, 'Đã gán Bài ' + questionId + ' vào ' + roomNames[roomIndex] + ' (Vụ ' + selectedCase.number + ').');
   }
 
   function resetAssignments() {
     persist({
       ...content,
-      caseQuestionIds: { ...content.caseQuestionIds, [CASE_01.id]: [...CASE_01.defaultQuestionIds] },
-    }, 'Vụ ' + CASE_01.number + ' đã trở về bộ bài gốc.');
+      caseQuestionIds: { ...content.caseQuestionIds, [selectedCase.id]: [...selectedCase.defaultQuestionIds] },
+    }, 'Vụ ' + selectedCase.number + ' đã trở về bộ bài gốc.');
   }
 
   function exportContent() {
@@ -551,13 +606,13 @@ export default function QuestionBankPage() {
     if (!parsed.length) return;
     const newQuestions = parsed.map(item => item.question);
     const nextIds = [...assignedQuestionIds];
-    if (newQuestions.length === CASE_01.rooms.length) newQuestions.forEach((question, index) => { nextIds[index] = question.id; });
+    if (newQuestions.length === selectedCase.rooms.length) newQuestions.forEach((question, index) => { nextIds[index] = question.id; });
     else nextIds[Number(latexTargetRoom)] = newQuestions[0].id;
     persist(
-      { ...content, customQuestions: [...content.customQuestions, ...newQuestions], caseQuestionIds: { ...content.caseQuestionIds, [CASE_01.id]: nextIds } },
-      newQuestions.length === CASE_01.rooms.length
-        ? 'Đã thêm ' + newQuestions.length + ' bài dưới trạng thái Cần duyệt và gán lần lượt vào các phòng.'
-        : 'Đã thêm Bài ' + newQuestions[0].id + ' và gán vào ' + ROOM_NAMES[Number(latexTargetRoom)] + '.',
+      { ...content, customQuestions: [...content.customQuestions, ...newQuestions], caseQuestionIds: { ...content.caseQuestionIds, [selectedCase.id]: nextIds } },
+      newQuestions.length === selectedCase.rooms.length
+        ? 'Đã thêm ' + newQuestions.length + ' bài dưới trạng thái Cần duyệt và gán lần lượt vào các phòng của Vụ ' + selectedCase.number + '.'
+        : 'Đã thêm Bài ' + newQuestions[0].id + ' và gán vào ' + roomNames[Number(latexTargetRoom)] + ' (Vụ ' + selectedCase.number + ').',
       newQuestions.map(q => q.id),
     );
     setParsed([]);
@@ -584,7 +639,7 @@ export default function QuestionBankPage() {
 
   const tabs = [
     { id: 'bank', label: `Kho bài (${bank.length})` },
-    { id: 'case', label: `Gán phòng Vụ ${CASE_01.number}` },
+    { id: 'case', label: 'Gán phòng theo vụ án' },
     { id: 'import', label: 'Nhập đề' },
   ] as const;
 
@@ -598,7 +653,7 @@ export default function QuestionBankPage() {
           <div>
             <h1 className="font-serif text-2xl text-[#f2ebd9] m-0">Kho đề</h1>
             <p className="text-xs text-[#8fa298] mt-1 mb-0">
-              {bank.length} bài, trong đó {content.customQuestions.length} bài tự tạo. Vụ {CASE_01.number} đang dùng {CASE_01.rooms.length} bài.
+              {bank.length} bài, trong đó {content.customQuestions.length} bài tự tạo. {CASES.length} vụ án đang dùng {usedQuestionCount} bài khác nhau.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -613,14 +668,14 @@ export default function QuestionBankPage() {
             </Button>
           </div>
         </div>
-        <nav className="max-w-[1200px] mx-auto px-4 sm:px-6 mt-4 flex gap-6 overflow-x-auto" role="tablist">
+        <nav className="max-w-[1200px] mx-auto px-4 sm:px-6 mt-4 flex gap-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
           {tabs.map(tab => (
             <button
               key={tab.id}
               role="tab"
               aria-selected={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`py-3 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-[#deb97b] ${
+              className={`py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-[#deb97b] ${
                 activeTab === tab.id ? 'border-[#deb97b] text-[#f2ebd9]' : 'border-transparent text-[#8ca097] hover:text-[#eee4d3]'
               }`}
             >
@@ -684,7 +739,7 @@ export default function QuestionBankPage() {
                   <span>Lớp</span>
                   <span>Chủ đề</span>
                   <span>Mức độ</span>
-                  <span>Phòng ở Vụ {CASE_01.number}</span>
+                  <span>Đang dùng ở</span>
                   <span>Trạng thái</span>
                   <span className="sr-only">Thao tác</span>
                 </div>
@@ -692,8 +747,7 @@ export default function QuestionBankPage() {
                 <ul className="divide-y divide-[#1c2f37] m-0 p-0 list-none">
                   {paginatedQuestions.map(question => {
                     const isCustom = content.customQuestions.some(item => item.id === question.id);
-                    const roomIdx = assignedQuestionIds.indexOf(question.id);
-                    const room = roomIdx >= 0 ? CASE_01.rooms[roomIdx] : null;
+                    const usage = usageById.get(question.id);
                     const isExpanded = expandedId === question.id;
                     const status = STATUS[question.auditStatus] ?? STATUS.draft;
                     const isPending = content.pendingSyncIds.includes(question.id);
@@ -728,8 +782,8 @@ export default function QuestionBankPage() {
                           <div className="col-start-1 flex flex-wrap items-center gap-x-4 gap-y-1 pl-[23px] text-xs text-[#8fa298] lg:contents lg:pl-0">
                             <span className="lg:hidden">Lớp {question.grade}</span>
                             <DifficultyMark value={question.difficulty} />
-                            <span className="truncate">
-                              {room ? <><span className="tabular-nums text-[#ceac79] mr-1.5">{room.no}</span><span className="text-[#d9cfbb]">{room.name}</span></> : <span className="hidden lg:inline text-[#4f6670]">—</span>}
+                            <span className="truncate" title={usage ? describeUsage(usage) : undefined}>
+                              {usage ? <span className="text-[#d9cfbb] tabular-nums">{describeUsage(usage)}</span> : <span className="hidden lg:inline text-[#4f6670]">Chưa dùng</span>}
                             </span>
                             <span className="inline-flex items-center gap-1.5 text-[#b5c5bd]">
                               <span className={`size-1.5 rounded-full ${status.dot}`} /> {status.label}
@@ -903,102 +957,205 @@ export default function QuestionBankPage() {
           </section>
         )}
 
-        {/* ==================== TAB 2: PHÂN PHỐI PHÒNG VỤ ÁN ==================== */}
+        {/* ==================== TAB 2: GÁN PHÒNG THEO VỤ ÁN ==================== */}
         {activeTab === 'case' && (
-          <section className="space-y-5">
-            <div className="flex items-center justify-between flex-wrap gap-4 bg-[#12232b] p-5 rounded-xl border border-[#263c45] shadow-md">
-              <div>
-                <span className="text-xs text-[#ceac79] font-bold tracking-widest uppercase block mb-1">
-                  CẤU HÌNH VỤ ÁN #{CASE_01.number}
-                </span>
-                <h2 className="text-lg md:text-xl font-serif text-[#f2e9d7] m-0">
-                  Phân bổ câu hỏi vào {CASE_01.rooms.length} phòng điều tra
-                </h2>
+          <section className="grid grid-cols-1 lg:grid-cols-[17rem_minmax(0,1fr)] gap-6 items-start">
+            {/* Danh sách vụ án: tìm kiếm + cuộn riêng, đủ cho hàng trăm vụ */}
+            <aside className="lg:sticky lg:top-4 rounded-lg border border-[#22353e] bg-[#0f1f26] flex flex-col max-h-72 lg:max-h-[calc(100vh-2rem)]">
+              <div className="p-3 border-b border-[#22353e] space-y-2">
+                <label className="relative block">
+                  <span className="sr-only">Tìm vụ án</span>
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6c827a] pointer-events-none" />
+                  <input
+                    type="search"
+                    value={caseQuery}
+                    onChange={e => setCaseQuery(e.target.value)}
+                    placeholder="Tìm theo số hoặc tên vụ"
+                    className="w-full h-9 pl-8 pr-2 rounded-md bg-[#09151a] border border-[#2b414a] text-xs text-[#f1ecdf] placeholder:text-[#5f756e] focus:border-[#deb97b] focus:outline-none"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-[11px] text-[#8ca097] cursor-pointer select-none">
+                  <input type="checkbox" checked={onlyChangedCases} onChange={e => setOnlyChangedCases(e.target.checked)} className="accent-[#ceac79]" />
+                  Chỉ vụ đã đổi bài so với bộ gốc
+                </label>
               </div>
-              <Button
-                variant="outline"
-                onClick={resetAssignments}
-                className="text-xs text-[#ceac79] border-[#4a636e] hover:bg-[#ceac79]/10 h-9 gap-1.5 bg-[#0f1f26]"
-              >
-                <RotateCcw size={14} /> Đặt lại bộ bài mặc định
-              </Button>
-            </div>
 
-            {/* Grid 5 phòng */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {CASE_01.rooms.map((room, index) => {
-                const currentQuestionId = assignedQuestionIds[index];
-                const currentQuestion = bank.find(q => q.id === currentQuestionId);
-                const clue = CASE_01.clues[index];
+              <ul role="listbox" aria-label="Vụ án" className="flex-1 overflow-y-auto m-0 p-1.5 list-none [scrollbar-width:thin] [scrollbar-color:#2f4650_transparent]">
+                {visibleCases.length === 0 && (
+                  <li className="px-3 py-6 text-center text-xs text-[#7d938b]">Không có vụ án nào khớp.</li>
+                )}
+                {visibleCases.map(c => {
+                  const active = c.id === selectedCase.id;
+                  return (
+                    <li key={c.id} role="option" aria-selected={active}>
+                      <button
+                        type="button"
+                        onClick={() => { setCaseId(c.id); setPickerRoom(null); }}
+                        className={`w-full text-left grid grid-cols-[2rem_minmax(0,1fr)_auto] items-baseline gap-x-2 px-2.5 py-2 rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-[#deb97b] ${
+                          active ? 'bg-[#ceac79]/12 text-[#f2ebd9]' : 'text-[#b5c5bd] hover:bg-[#162b35]'
+                        }`}
+                      >
+                        <span className={`text-xs tabular-nums ${active ? 'text-[#deb97b] font-semibold' : 'text-[#7d938b]'}`}>{c.number}</span>
+                        <span className={`text-[13px] truncate ${active ? 'font-serif' : ''}`}>{c.title}</span>
+                        {changedCaseIds.has(c.id)
+                          ? <span className="size-1.5 rounded-full bg-[#e8b35c] self-center" title="Đã đổi bài so với bộ gốc" />
+                          : <span />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
 
-                return (
-                  <div
-                    key={room.no}
-                    className={`rounded-xl p-5 border flex flex-col justify-between shadow-lg transition-all ${
-                      room.final
-                        ? 'bg-gradient-to-b from-[#1b2b30] to-[#111e24] border-[#b89354]'
-                        : 'bg-[#12232b] border-[#263c45]'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <span className={`px-2.5 py-1 rounded text-[11px] font-bold tracking-wider border ${
-                          room.final
-                            ? 'bg-[#413624] text-[#ffd991] border-[#846a3d]'
-                            : 'bg-[#1a3038] text-[#b3c8bf] border-[#314a54]'
-                        }`}>
-                          PHÒNG {room.no}
+              <div className="px-3 py-2 border-t border-[#22353e] text-[11px] text-[#6c827a] tabular-nums">
+                {visibleCases.length} / {CASES.length} vụ án
+              </div>
+            </aside>
+
+            {/* Chi tiết vụ đang chọn */}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-end justify-between gap-3 pb-4 border-b border-[#22353e]">
+                <div className="min-w-0">
+                  <p className="text-xs text-[#deb97b] tabular-nums m-0">Vụ {selectedCase.number}</p>
+                  <h2 className="font-serif text-xl text-[#f2ebd9] m-0 mt-0.5">{selectedCase.title}</h2>
+                  <p className="text-xs text-[#8ca097] m-0 mt-1">
+                    {selectedCase.rooms.length} phòng, học sinh đi theo thứ tự từ trên xuống.{' '}
+                    {changedRoomCount > 0
+                      ? <span className="text-[#e8b35c]">Đã đổi {changedRoomCount} bài so với bộ gốc.</span>
+                      : 'Đang dùng bộ bài gốc.'}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={resetAssignments}
+                  disabled={changedRoomCount === 0}
+                  className="text-xs text-[#ceac79] border-[#3b5560] hover:bg-[#ceac79]/10 hover:text-[#deb97b] h-9 gap-1.5 bg-transparent disabled:opacity-40"
+                >
+                  <RotateCcw size={14} /> Đặt lại bộ bài gốc
+                </Button>
+              </div>
+
+              <ol className="m-0 p-0 list-none divide-y divide-[#1c2f37]">
+                {selectedCase.rooms.map((room, index) => {
+                  const questionId = assignedQuestionIds[index];
+                  const question = bank.find(q => q.id === questionId);
+                  const clue = selectedCase.clues[index];
+                  const isDefault = questionId === selectedCase.defaultQuestionIds[index];
+                  const isPicking = pickerRoom === index;
+
+                  return (
+                    <li key={room.no} className="py-4">
+                      <div className="grid grid-cols-[2.25rem_minmax(0,1fr)] md:grid-cols-[2.25rem_minmax(0,15rem)_minmax(0,1fr)_auto] gap-x-4 gap-y-3 items-start">
+                        <span className={`row-span-2 md:row-span-1 font-serif text-2xl leading-none tabular-nums pt-0.5 ${room.final ? 'text-[#deb97b]' : 'text-[#4f6670]'}`}>
+                          {room.no}
                         </span>
-                        <span className="text-xs font-bold text-[#ceac79]">
-                          {room.final ? 'M5 (Quyết định)' : `Manh mối M${index + 1}`}
-                        </span>
-                      </div>
-                      <h3 className="font-serif text-base text-[#f0e7d5] font-bold mb-1">{room.name}</h3>
-                      <p className="text-xs text-[#8ca097] mb-3">{room.object}</p>
 
-                      {/* Manh mối mở ra */}
-                      <div className="p-3 bg-[#0a161b] border border-[#1f333c] rounded-lg text-xs text-[#b8c9c0] mb-4">
-                        <span className="text-[10px] text-[#deb97b] font-semibold block mb-0.5 uppercase tracking-wider">
-                          Dữ kiện mở khóa:
-                        </span>
-                        <em className="text-[#d8e3dc]">&ldquo;{clue?.text}&rdquo;</em>
-                      </div>
-
-                      {/* Chọn bài gán */}
-                      <label className="block mb-2">
-                        <span className="text-xs text-[#9eb0ab] font-medium block mb-1">
-                          Chọn bài tập gán cho phòng:
-                        </span>
-                        <select
-                          value={currentQuestionId}
-                          onChange={e => assignQuestion(index, Number(e.target.value))}
-                          className="w-full bg-[#09151a] border border-[#3b515a] focus:border-[#deb97b] focus:outline-none text-[#f2ebe0] text-xs rounded-lg p-2.5 shadow-sm"
-                        >
-                          {bank.map(q => (
-                            <option key={q.id} value={q.id}>
-                              Bài #{q.id} · Lớp {q.grade} - {q.topic.slice(0, 30)}...
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-
-                    {/* Preview nội dung bài hiện tại */}
-                    {currentQuestion && (
-                      <div className="p-3 bg-[#0a161b] border border-[#21353e] rounded-lg text-xs mt-3">
-                        <div className="flex justify-between items-center mb-1 text-xs">
-                          <strong className="text-[#ffd78a]">Bài #{currentQuestion.id}</strong>
-                          <span className="text-[#8ba298]">{currentQuestion.difficulty || 'Chưa gắn mức'}</span>
+                        {/* Phòng */}
+                        <div className="min-w-0">
+                          <h3 className="font-serif text-[15px] text-[#f2ebd9] m-0 leading-snug">
+                            {room.name}
+                            {room.final && <span className="ml-2 font-sans text-[11px] text-[#deb97b] align-middle">Phòng quyết định</span>}
+                          </h3>
+                          <p className="text-xs text-[#7d938b] m-0 mt-0.5">{room.object}</p>
+                          {clue?.text && (
+                            <p className="text-xs text-[#a6bcb3] italic m-0 mt-2 line-clamp-2" title={clue.text}>
+                              Mở khóa: &ldquo;{clue.text}&rdquo;
+                            </p>
+                          )}
                         </div>
-                        <p className="text-xs text-[#a4b5ad] line-clamp-1 mb-1 font-medium">{currentQuestion.topic}</p>
-                        <div className="text-[11px] text-[#7fa392] border-t border-[#1f333c] pt-1.5 mt-1 font-mono">
-                          Lỗi: Dòng {currentQuestion.errorLine ? currentQuestion.errorLine + 1 : 2}
+
+                        {/* Bài đang gán */}
+                        <div className="col-start-2 md:col-start-auto min-w-0">
+                          {question ? (
+                            <>
+                              <p className="m-0 text-sm text-[#f2ebd9] truncate">
+                                <span className="tabular-nums text-[#ceac79] font-semibold mr-2">#{question.id}</span>
+                                {question.topic}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-[#8fa298]">
+                                <span>Lớp {question.grade}</span>
+                                <DifficultyMark value={question.difficulty} />
+                                <span>Lỗi ở dòng {(question.errorLine ?? 1) + 1}</span>
+                                {!isDefault && <span className="text-[#e8b35c]">Khác bộ gốc</span>}
+                              </div>
+                            </>
+                          ) : (
+                            <p className="m-0 text-sm text-[#ff9e8b]">Bài #{questionId} không còn trong kho. Hãy chọn bài khác.</p>
+                          )}
+                        </div>
+
+                        <div className="col-start-2 md:col-start-auto">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-expanded={isPicking}
+                            onClick={() => { setPickerRoom(isPicking ? null : index); setPickerQuery(''); }}
+                            className={`h-8 text-xs gap-1.5 bg-transparent ${isPicking ? 'border-[#ceac79] text-[#deb97b]' : 'border-[#3b5560] text-[#ceac79] hover:bg-[#ceac79]/10 hover:text-[#deb97b]'}`}
+                          >
+                            <Pencil size={13} /> {isPicking ? 'Đóng' : 'Đổi bài'}
+                          </Button>
                         </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+
+                      {/* Bộ chọn bài có tìm kiếm, mở ngay trong hàng */}
+                      {isPicking && (
+                        <div className="mt-3 md:ml-[calc(2.25rem+1rem)] rounded-lg border border-[#2b414a] bg-[#0b171d]">
+                          <div className="p-2 border-b border-[#22353e]">
+                            <label className="relative block">
+                              <span className="sr-only">Tìm bài cho {room.name}</span>
+                              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6c827a] pointer-events-none" />
+                              <input
+                                autoFocus
+                                type="search"
+                                value={pickerQuery}
+                                onChange={e => setPickerQuery(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Escape') setPickerRoom(null); }}
+                                placeholder="Mã, chủ đề hoặc lớp, vd: chuyển vế lớp 7"
+                                className="w-full h-9 pl-8 pr-2 rounded-md bg-[#09151a] border border-[#2b414a] text-xs text-[#f1ecdf] placeholder:text-[#5f756e] focus:border-[#deb97b] focus:outline-none"
+                              />
+                            </label>
+                          </div>
+                          <ul className="m-0 p-1 list-none max-h-72 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#2f4650_transparent]">
+                            {pickerResults.length === 0 && (
+                              <li className="px-3 py-5 text-center text-xs text-[#7d938b]">Không có bài nào khớp.</li>
+                            )}
+                            {pickerResults.map(q => {
+                              const current = q.id === questionId;
+                              const usage = usageById.get(q.id);
+                              return (
+                                <li key={q.id}>
+                                  <button
+                                    type="button"
+                                    disabled={current}
+                                    onClick={() => { assignQuestion(index, q.id); setPickerRoom(null); }}
+                                    className={`w-full text-left grid grid-cols-[3rem_minmax(0,1fr)] sm:grid-cols-[3rem_minmax(0,1fr)_3.5rem_8rem] items-center gap-x-3 gap-y-0.5 px-2.5 py-2 rounded-md text-xs transition-colors focus-visible:outline-2 focus-visible:outline-[#deb97b] ${
+                                      current ? 'bg-[#ceac79]/10 cursor-default' : 'hover:bg-[#162b35]'
+                                    }`}
+                                  >
+                                    <span className="tabular-nums text-[#ceac79] font-semibold">#{q.id}</span>
+                                    <span className="min-w-0">
+                                      <span className="block text-[13px] text-[#f2ebd9] truncate">{q.topic}</span>
+                                      <span className="block text-[11px] text-[#6c827a] truncate">
+                                        {current ? 'Đang gán cho phòng này' : usage ? `Đang dùng ở ${describeUsage(usage)}` : 'Chưa dùng ở vụ nào'}
+                                      </span>
+                                    </span>
+                                    <span className="hidden sm:block text-[#b5c5bd]">Lớp {q.grade}</span>
+                                    <span className="hidden sm:block"><DifficultyMark value={q.difficulty} /></span>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          {pickerTotal > pickerResults.length && (
+                            <p className="m-0 px-3 py-2 border-t border-[#22353e] text-[11px] text-[#6c827a]">
+                              Đang hiện {pickerResults.length} / {pickerTotal} bài. Gõ thêm để thu hẹp.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
           </section>
         )}
@@ -1236,37 +1393,51 @@ export default function QuestionBankPage() {
                             <span>Token sai: <b>{item.wrongToken ? <MathText value={item.wrongToken} /> : '?'}</b></span>
                             <span>Cách sửa: <b>{item.interaction}</b></span>
                           </div>
-                          {parsed.length === CASE_01.rooms.length && (
+                          {parsed.length === selectedCase.rooms.length && (
                             <small className="block mt-1 text-[#deb97b] font-medium">
-                              Tự gán vào Phòng {CASE_01.rooms[index].no} · {ROOM_NAMES[index]}
+                              Tự gán vào Phòng {selectedCase.rooms[index].no} · {roomNames[index]}
                             </small>
                           )}
                         </article>
                       ))}
                     </div>
 
-                    {parsed.length !== CASE_01.rooms.length && (
-                      <label className="text-xs text-[#9eb0ab] flex items-center gap-2 pt-2">
-                        Gán câu này vào:
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-2 text-xs text-[#9eb0ab]">
+                      <label className="flex items-center gap-2">
+                        Vụ án:
+                        <select
+                          value={selectedCase.id}
+                          onChange={e => { setCaseId(e.target.value); setLatexTargetRoom('0'); }}
+                          className="bg-[#09151a] border border-[#304750] text-[#f1ecdf] p-1.5 rounded-lg text-xs"
+                        >
+                          {CASES.map(c => (
+                            <option value={c.id} key={c.id}>Vụ {c.number} · {c.title}</option>
+                          ))}
+                        </select>
+                      </label>
+                    {parsed.length !== selectedCase.rooms.length && (
+                      <label className="flex items-center gap-2">
+                        Phòng:
                         <select
                           value={latexTargetRoom}
                           onChange={e => setLatexTargetRoom(e.target.value)}
                           className="bg-[#09151a] border border-[#304750] text-[#f1ecdf] p-1.5 rounded-lg text-xs"
                         >
-                          {ROOM_NAMES.map((name, index) => (
+                          {roomNames.map((name, index) => (
                             <option value={index} key={name}>
-                              Phòng {CASE_01.rooms[index].no} · {name}
+                              Phòng {selectedCase.rooms[index].no} · {name}
                             </option>
                           ))}
                         </select>
                       </label>
                     )}
+                    </div>
 
                     <div className="flex justify-end pt-3 border-t border-[#21353e]">
                       <Button onClick={saveParsedLatex} className="bg-[#ceac79] text-[#122227] hover:bg-[#deb97b] font-bold text-xs h-9 px-4">
                         <CheckCircle2 size={16} className="mr-1.5" />
-                        {parsed.length === CASE_01.rooms.length
-                          ? `Lưu và gán vào ${CASE_01.rooms.length} phòng`
+                        {parsed.length === selectedCase.rooms.length
+                          ? `Lưu và gán vào ${selectedCase.rooms.length} phòng`
                           : 'Lưu và gán vào phòng'}
                       </Button>
                     </div>
