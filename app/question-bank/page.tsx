@@ -225,8 +225,11 @@ export default function QuestionBankPage() {
   const [latex, setLatex] = useState('');
   const [parsed, setParsed] = useState<ParsedQuestion[]>([]);
   const [latexTargetRoom, setLatexTargetRoom] = useState('0');
+  // Gán phòng khi nhập LaTeX là tùy chọn: '' = chỉ lưu vào kho
+  const [latexCaseId, setLatexCaseId] = useState('');
+  const latexCase = CASES.find(c => c.id === latexCaseId) ?? null;
 
-  // Vụ án đang chọn ở tab Gán phòng (dùng chung cho nhập LaTeX)
+  // Vụ án đang chọn ở tab Gán phòng
   const [caseId, setCaseId] = useState(CASE_01.id);
   const selectedCase = CASES.find(c => c.id === caseId) ?? CASE_01;
   const roomNames = selectedCase.rooms.map(room => room.name);
@@ -655,17 +658,23 @@ export default function QuestionBankPage() {
     try {
       const { questions: newQuestions, note } = await withCloudIds(parsed.map(item => item.question));
       const current = contentRef.current;
-      const nextIds = [...questionIdsForCase(current, selectedCase)];
-      if (newQuestions.length === selectedCase.rooms.length) newQuestions.forEach((question, index) => { nextIds[index] = question.id; });
-      else nextIds[Number(latexTargetRoom)] = newQuestions[0].id;
-      persist(
-        { ...current, customQuestions: [...current.customQuestions, ...newQuestions], caseQuestionIds: { ...current.caseQuestionIds, [selectedCase.id]: nextIds } },
-        (newQuestions.length === selectedCase.rooms.length
-          ? 'Đã thêm ' + newQuestions.length + ' bài dưới trạng thái Cần duyệt và gán lần lượt vào các phòng của Vụ ' + selectedCase.number
-          : 'Đã thêm Bài ' + newQuestions[0].id + ' và gán vào ' + roomNames[Number(latexTargetRoom)] + ' (Vụ ' + selectedCase.number + ')') + (note || '.'),
-        newQuestions.map(q => q.id),
-        [selectedCase.id],
-      );
+      const withQuestions = { ...current, customQuestions: [...current.customQuestions, ...newQuestions] };
+      if (!latexCase) {
+        persist(withQuestions, 'Đã thêm ' + newQuestions.length + ' bài vào kho dưới trạng thái Cần duyệt, chưa gán phòng' + (note || '.'), newQuestions.map(q => q.id));
+      } else {
+        const fillsCase = newQuestions.length === latexCase.rooms.length;
+        const nextIds = [...questionIdsForCase(current, latexCase)];
+        if (fillsCase) newQuestions.forEach((question, index) => { nextIds[index] = question.id; });
+        else nextIds[Number(latexTargetRoom)] = newQuestions[0].id;
+        persist(
+          { ...withQuestions, caseQuestionIds: { ...current.caseQuestionIds, [latexCase.id]: nextIds } },
+          (fillsCase
+            ? 'Đã thêm ' + newQuestions.length + ' bài dưới trạng thái Cần duyệt và gán lần lượt vào các phòng của Vụ ' + latexCase.number
+            : 'Đã thêm ' + newQuestions.length + ' bài, gán Bài ' + newQuestions[0].id + ' vào ' + latexCase.rooms[Number(latexTargetRoom)].name + ' (Vụ ' + latexCase.number + ')') + (note || '.'),
+          newQuestions.map(q => q.id),
+          [latexCase.id],
+        );
+      }
       setParsed([]);
       setLatex('');
       setActiveTab('bank');
@@ -1448,9 +1457,9 @@ export default function QuestionBankPage() {
                             <span>Token sai: <b>{item.wrongToken ? <MathText value={item.wrongToken} /> : '?'}</b></span>
                             <span>Cách sửa: <b>{item.interaction}</b></span>
                           </div>
-                          {parsed.length === selectedCase.rooms.length && (
+                          {latexCase && parsed.length === latexCase.rooms.length && (
                             <small className="block mt-1 text-[#deb97b] font-medium">
-                              Tự gán vào Phòng {selectedCase.rooms[index].no} · {roomNames[index]}
+                              Tự gán vào Phòng {latexCase.rooms[index].no} · {latexCase.rooms[index].name}
                             </small>
                           )}
                         </article>
@@ -1459,18 +1468,19 @@ export default function QuestionBankPage() {
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-2 text-xs text-[#9eb0ab]">
                       <label className="flex items-center gap-2">
-                        Vụ án:
+                        Gán vào vụ án (tùy chọn):
                         <select
-                          value={selectedCase.id}
-                          onChange={e => { setCaseId(e.target.value); setLatexTargetRoom('0'); }}
+                          value={latexCaseId}
+                          onChange={e => { setLatexCaseId(e.target.value); setLatexTargetRoom('0'); }}
                           className="bg-[#09151a] border border-[#304750] text-[#f1ecdf] p-1.5 rounded-lg text-xs"
                         >
+                          <option value="">Không gán · chỉ lưu vào kho</option>
                           {CASES.map(c => (
                             <option value={c.id} key={c.id}>Vụ {c.number} · {c.title}</option>
                           ))}
                         </select>
                       </label>
-                    {parsed.length !== selectedCase.rooms.length && (
+                    {latexCase && parsed.length !== latexCase.rooms.length && (
                       <label className="flex items-center gap-2">
                         Phòng:
                         <select
@@ -1478,9 +1488,9 @@ export default function QuestionBankPage() {
                           onChange={e => setLatexTargetRoom(e.target.value)}
                           className="bg-[#09151a] border border-[#304750] text-[#f1ecdf] p-1.5 rounded-lg text-xs"
                         >
-                          {roomNames.map((name, index) => (
-                            <option value={index} key={name}>
-                              Phòng {selectedCase.rooms[index].no} · {name}
+                          {latexCase.rooms.map((room, index) => (
+                            <option value={index} key={room.name}>
+                              Phòng {room.no} · {room.name}
                             </option>
                           ))}
                         </select>
@@ -1491,9 +1501,11 @@ export default function QuestionBankPage() {
                     <div className="flex justify-end pt-3 border-t border-[#21353e]">
                       <Button onClick={saveParsedLatex} disabled={savingNew} className="bg-[#ceac79] text-[#122227] hover:bg-[#deb97b] font-bold text-xs h-9 px-4">
                         <CheckCircle2 size={16} className="mr-1.5" />
-                        {parsed.length === selectedCase.rooms.length
-                          ? `Lưu và gán vào ${selectedCase.rooms.length} phòng`
-                          : 'Lưu và gán vào phòng'}
+                        {!latexCase
+                          ? 'Lưu vào kho'
+                          : parsed.length === latexCase.rooms.length
+                            ? `Lưu và gán vào ${latexCase.rooms.length} phòng`
+                            : 'Lưu và gán vào phòng'}
                       </Button>
                     </div>
                   </div>

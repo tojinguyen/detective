@@ -91,16 +91,9 @@ export function CaseSelector({
                 {/* Card Top Stamp & Badge */}
                 <div className="p-6 sm:p-7 pb-4">
                   <div className="flex items-center justify-between gap-3 mb-3.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2.5 py-0.5 rounded border border-[#83693f] bg-[#272115] text-[#ecd7ad] text-[10px] font-mono font-bold tracking-wider">
-                        HỒ SƠ #{caseItem.number}
-                      </span>
-                      {caseItem.topicBadge && (
-                        <span className="px-2 py-0.5 rounded bg-[#1c353f] text-[#8ce0c2] text-[10px] border border-[#2f5564]">
-                          {caseItem.topicBadge}
-                        </span>
-                      )}
-                    </div>
+                    <span className="px-2.5 py-0.5 rounded border border-[#83693f] bg-[#272115] text-[#ecd7ad] text-[10px] font-mono font-bold tracking-wider">
+                      HỒ SƠ #{caseItem.number}
+                    </span>
 
                     {isCompleted ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-[#2f6f4c] bg-[#123122] text-[#54c48a] text-[10px] font-semibold whitespace-nowrap">
@@ -149,7 +142,7 @@ export function CaseSelector({
                       onClick={() => onSelectCase(caseItem)}
                       className="gold-button text-xs font-semibold py-1.5 px-4 h-9 shadow-sm shrink-0 whitespace-nowrap"
                     >
-                      {isCompleted ? 'Khám nghiệm lại' : 'Vào phá án'}
+                      {isCompleted ? 'Phá án lại' : 'Vào phá án'}
                       <ArrowRight size={14} className="ml-1" />
                     </Button>
                   ) : (

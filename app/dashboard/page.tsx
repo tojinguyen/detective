@@ -4,9 +4,10 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
-import { Users, Clock, AlertTriangle, CheckCircle2, Search, Download, Eye, Award, FileSpreadsheet } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CheckCircle2, Search, Download, Eye, ArrowDownWideNarrow } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppHeader } from '@/components/app-header';
+import { CASES } from '@/lib/cases';
 
 interface SessionRecord {
   question_id: number;
@@ -49,11 +50,19 @@ interface InvestigationSession {
   };
 }
 
+function caseLabel(caseId: string) {
+  const caseData = CASES.find(c => c.id === caseId);
+  return caseData ? `Vụ ${caseData.number} · ${caseData.title}` : caseId;
+}
+
 export default function AdminDashboardPage() {
   const { isAdmin, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<InvestigationSession[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<InvestigationSession | null>(null);
+  const [caseFilter, setCaseFilter] = useState('all');
+  // Mặc định theo thời gian làm bài (mới nhất trước); bật xếp hạng thì điểm cao trước, bằng điểm thì phá án nhanh hơn trước
+  const [rankByScore, setRankByScore] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
@@ -69,7 +78,11 @@ export default function AdminDashboardPage() {
 
   const filtered = sessions.filter(s =>
     (s.user_name || '').toLowerCase().includes(search.toLowerCase())
+    && (caseFilter === 'all' || s.case_id === caseFilter)
   );
+  if (rankByScore) {
+    filtered.sort((a, b) => (b.summary?.score ?? -1) - (a.summary?.score ?? -1) || (a.active_seconds || 0) - (b.active_seconds || 0));
+  }
 
   const totalWon = sessions.filter(s => s.won).length;
   const avgTime = sessions.length
@@ -86,24 +99,20 @@ export default function AdminDashboardPage() {
   function exportCSV() {
     const header = [
       'Học sinh',
+      'Vụ án',
       'Điểm vụ án',
       'Cấp bậc',
       'Thời gian phá án',
-      'Thời gian xem hồ sơ',
-      'Rời tab (lần)',
-      'Treo máy / Ẩn tab',
       'Số lần kết luận',
       'Kết quả',
       'Ngày giờ'
     ];
     const rows = filtered.map(s => [
       `"${s.user_name || ''}"`,
+      `"${caseLabel(s.case_id)}"`,
       s.summary?.score !== undefined ? s.summary.score : '',
       `"${s.summary?.rank || ''}"`,
       fmt(s.active_seconds),
-      fmt(s.summary?.board_seconds || 0),
-      s.tab_exits || 0,
-      fmt(s.inactive_seconds),
       s.summary?.conclusion_attempts || 1,
       s.won ? 'Thành công' : 'Chưa đúng',
       new Date(s.created_at).toLocaleString('vi-VN')
@@ -162,35 +171,56 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      <div className="mb-4 bg-[#142129] p-2 border border-[#34474e] rounded flex items-center gap-2">
-        <Search size={16} className="text-[#879896] ml-2" />
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Tìm kiếm tên học sinh..."
-          className="bg-transparent border-none text-xs outline-none w-full text-[#e9e5d9]"
-        />
+      <div className="mb-4 flex flex-wrap items-stretch gap-2">
+        <div className="flex-1 min-w-[200px] bg-[#142129] p-2 border border-[#34474e] rounded flex items-center gap-2">
+          <Search size={16} className="text-[#879896] ml-2" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Tìm kiếm tên học sinh..."
+            className="bg-transparent border-none text-xs outline-none w-full text-[#e9e5d9]"
+          />
+        </div>
+        <select
+          value={caseFilter}
+          onChange={e => setCaseFilter(e.target.value)}
+          aria-label="Lọc theo vụ án"
+          className="bg-[#142129] border border-[#34474e] rounded px-2 text-xs text-[#e9e5d9]"
+        >
+          <option value="all">Tất cả vụ án</option>
+          {CASES.map(c => <option key={c.id} value={c.id}>{caseLabel(c.id)}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={() => setRankByScore(v => !v)}
+          aria-pressed={rankByScore}
+          className={`px-3 rounded border text-xs font-semibold inline-flex items-center gap-1.5 ${rankByScore ? 'bg-[#ceac79] border-[#ceac79] text-[#101d24]' : 'bg-[#142129] border-[#34474e] text-[#ceac79] hover:bg-[#1f313a]'}`}
+        >
+          <ArrowDownWideNarrow size={14} /> {rankByScore ? 'Đang xếp hạng: điểm cao → thấp' : 'Xếp hạng theo điểm'}
+        </button>
       </div>
 
       <div className="bg-[#142129] border border-[#34474e] rounded overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="bg-[#1a2c33] border-b border-[#34474e] text-[#baa785]">
             <tr>
+              {rankByScore && <th className="p-3">Hạng</th>}
               <th className="p-3">Học sinh</th>
+              <th className="p-3">Vụ án</th>
               <th className="p-3">Kết quả</th>
               <th className="p-3">Điểm</th>
               <th className="p-3">Cấp bậc</th>
               <th className="p-3">Thời gian phá án</th>
-              <th className="p-3">Xem hồ sơ</th>
-              <th className="p-3">Rời tab</th>
               <th className="p-3">Ngày làm</th>
               <th className="p-3 text-right">Chi tiết</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#243740]">
-            {filtered.map(s => (
+            {filtered.map((s, index) => (
               <tr key={s.id} className="hover:bg-[#1f313a] transition-colors">
+                {rankByScore && <td className="p-3 font-mono font-bold text-[#deb97b]">#{index + 1}</td>}
                 <td className="p-3 font-semibold text-[#f1ecdf]">{s.user_name}</td>
+                <td className="p-3 text-[#d2c7b0]">{caseLabel(s.case_id)}</td>
                 <td className="p-3">{s.won ? <span className="text-[#7e9473] font-bold">✓ Phá án thành công</span> : <span className="text-[#d3765e]">✕ Sai/Chưa xong</span>}</td>
                 <td className="p-3 font-bold text-[#deb97b]">
                   {s.summary?.score !== undefined ? `${s.summary.score}/100` : '--'}
@@ -203,8 +233,6 @@ export default function AdminDashboardPage() {
                   ) : '--'}
                 </td>
                 <td className="p-3 font-mono text-[#ceac79]">{fmt(s.active_seconds)}</td>
-                <td className="p-3 font-mono text-[#9bb0a5]">{fmt(s.summary?.board_seconds || 0)}</td>
-                <td className="p-3">{s.tab_exits > 0 ? <span className="text-[#d3765e] font-semibold">{s.tab_exits} lần ({fmt(s.inactive_seconds)})</span> : <span className="text-[#7e9473]">Tập trung</span>}</td>
                 <td className="p-3 text-[#879896]">{new Date(s.created_at).toLocaleString('vi-VN')}</td>
                 <td className="p-3 text-right">
                   <button onClick={() => setSelected(s)} className="p-1.5 bg-[#263b42] hover:bg-[#324b54] rounded text-[#ceac79] inline-flex items-center gap-1">
@@ -223,7 +251,7 @@ export default function AdminDashboardPage() {
             <div className="flex items-start justify-between border-b border-[#354850] pb-3 mb-3">
               <div>
                 <h3 className="text-base font-serif text-[#f1ecdf] font-bold mb-0.5">Chi tiết: {selected.user_name}</h3>
-                <p className="text-[#879896]">Vụ án: {selected.case_id} · {new Date(selected.created_at).toLocaleString('vi-VN')}</p>
+                <p className="text-[#879896]">{caseLabel(selected.case_id)} · {new Date(selected.created_at).toLocaleString('vi-VN')}</p>
               </div>
               {selected.summary?.rank && (
                 <div className="text-right">

@@ -103,7 +103,7 @@ export const CASE_01: CaseDefinition = {
   discoveredAt: '16:12',
   status: 'available',
   topicBadge: 'Số học & Thứ tự thực hiện phép tính',
-  difficulty: 'Trung bình',
+  difficulty: 'Dễ',
   estimatedTime: '15 - 20 phút',
   objective: {
     initial: 'Tìm người đã di chuyển huy hiệu',
@@ -281,7 +281,7 @@ export const CASE_03: CaseDefinition = {
   discoveredAt: '06:30',
   status: 'available',
   topicBadge: 'Logic ngoại phạm & Nhận dạng hiện trường',
-  difficulty: 'Trung bình - Khó',
+  difficulty: 'Khó',
   estimatedTime: '20 - 25 phút',
   objective: {
     initial: 'Khám phá 5 địa điểm hiện trường để thu thập dấu vết Người Hùng',

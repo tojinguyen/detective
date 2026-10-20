@@ -40,11 +40,6 @@ export function CaseBriefingModal({
                   <ShieldAlert size={12} />
                   HỒ SƠ MẬT · VỤ ÁN #{caseData.number}
                 </span>
-                {caseData.topicBadge && (
-                  <span className="px-2 py-0.5 rounded bg-[#18333e] text-[#8ce0c2] text-[10px] border border-[#2b515f]">
-                    {caseData.topicBadge}
-                  </span>
-                )}
               </div>
 
               <DialogTitle className="font-serif text-2xl sm:text-3xl text-[#f3ece0] font-normal tracking-tight">
