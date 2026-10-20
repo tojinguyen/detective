@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
-import { Users, Clock, AlertTriangle, CheckCircle2, Search, Download, Eye, ArrowDownWideNarrow } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CheckCircle2, Search, Download, Eye, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppHeader } from '@/components/app-header';
 import { CASES } from '@/lib/cases';
@@ -55,14 +55,51 @@ function caseLabel(caseId: string) {
   return caseData ? `Vụ ${caseData.number} · ${caseData.title}` : caseId;
 }
 
+type SortKey = 'user' | 'case' | 'won' | 'score' | 'time' | 'date';
+
+const SORT_VALUE: Record<SortKey, (s: InvestigationSession) => string | number> = {
+  user: s => s.user_name || '',
+  case: s => CASES.findIndex(c => c.id === s.case_id),
+  won: s => (s.won ? 1 : 0),
+  score: s => s.summary?.score ?? -1,
+  time: s => s.active_seconds || 0,
+  date: s => new Date(s.created_at).getTime(),
+};
+
+// Lần bấm đầu: điểm/kết quả/ngày xếp giảm dần, còn lại tăng dần
+const DESC_FIRST: SortKey[] = ['won', 'score', 'date'];
+
+function SortHeader({ label, sortKey, sort, onSort }: {
+  label: string;
+  sortKey: SortKey;
+  sort: { key: SortKey; desc: boolean };
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sort.key === sortKey;
+  const Icon = !active ? ArrowUpDown : sort.desc ? ArrowDown : ArrowUp;
+  return (
+    <th className="p-0" aria-sort={active ? (sort.desc ? 'descending' : 'ascending') : 'none'}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`w-full p-3 text-left font-semibold inline-flex items-center gap-1.5 hover:text-[#ffd78a] ${active ? 'text-[#ffd78a]' : ''}`}
+      >
+        {label}
+        <Icon size={12} className={active ? '' : 'opacity-40'} />
+      </button>
+    </th>
+  );
+}
+
 export default function AdminDashboardPage() {
   const { isAdmin, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<InvestigationSession[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<InvestigationSession | null>(null);
   const [caseFilter, setCaseFilter] = useState('all');
-  // Mặc định theo thời gian làm bài (mới nhất trước); bật xếp hạng thì điểm cao trước, bằng điểm thì phá án nhanh hơn trước
-  const [rankByScore, setRankByScore] = useState(false);
+  // Mặc định theo ngày làm, mới nhất trước; bấm tiêu đề cột để xếp theo cột đó, bấm lại để đảo chiều
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'date', desc: true });
+  const onSort = (key: SortKey) => setSort(prev => prev.key === key ? { key, desc: !prev.desc } : { key, desc: DESC_FIRST.includes(key) });
 
   useEffect(() => {
     if (isAdmin) {
@@ -80,9 +117,14 @@ export default function AdminDashboardPage() {
     (s.user_name || '').toLowerCase().includes(search.toLowerCase())
     && (caseFilter === 'all' || s.case_id === caseFilter)
   );
-  if (rankByScore) {
-    filtered.sort((a, b) => (b.summary?.score ?? -1) - (a.summary?.score ?? -1) || (a.active_seconds || 0) - (b.active_seconds || 0));
-  }
+  const sortValue = SORT_VALUE[sort.key];
+  filtered.sort((a, b) => {
+    const x = sortValue(a), y = sortValue(b);
+    const diff = typeof x === 'string' ? x.localeCompare(String(y), 'vi') : x - (y as number);
+    // Bằng nhau thì ai phá án nhanh hơn đứng trước
+    return (sort.desc ? -diff : diff) || (a.active_seconds || 0) - (b.active_seconds || 0);
+  });
+  const ranked = sort.key === 'score' && sort.desc;
 
   const totalWon = sessions.filter(s => s.won).length;
   const avgTime = sessions.length
@@ -190,35 +232,27 @@ export default function AdminDashboardPage() {
           <option value="all">Tất cả vụ án</option>
           {CASES.map(c => <option key={c.id} value={c.id}>{caseLabel(c.id)}</option>)}
         </select>
-        <button
-          type="button"
-          onClick={() => setRankByScore(v => !v)}
-          aria-pressed={rankByScore}
-          className={`px-3 rounded border text-xs font-semibold inline-flex items-center gap-1.5 ${rankByScore ? 'bg-[#ceac79] border-[#ceac79] text-[#101d24]' : 'bg-[#142129] border-[#34474e] text-[#ceac79] hover:bg-[#1f313a]'}`}
-        >
-          <ArrowDownWideNarrow size={14} /> {rankByScore ? 'Đang xếp hạng: điểm cao → thấp' : 'Xếp hạng theo điểm'}
-        </button>
       </div>
 
       <div className="bg-[#142129] border border-[#34474e] rounded overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="bg-[#1a2c33] border-b border-[#34474e] text-[#baa785]">
             <tr>
-              {rankByScore && <th className="p-3">Hạng</th>}
-              <th className="p-3">Học sinh</th>
-              <th className="p-3">Vụ án</th>
-              <th className="p-3">Kết quả</th>
-              <th className="p-3">Điểm</th>
+              {ranked && <th className="p-3">Hạng</th>}
+              <SortHeader label="Học sinh" sortKey="user" sort={sort} onSort={onSort} />
+              <SortHeader label="Vụ án" sortKey="case" sort={sort} onSort={onSort} />
+              <SortHeader label="Kết quả" sortKey="won" sort={sort} onSort={onSort} />
+              <SortHeader label="Điểm" sortKey="score" sort={sort} onSort={onSort} />
               <th className="p-3">Cấp bậc</th>
-              <th className="p-3">Thời gian phá án</th>
-              <th className="p-3">Ngày làm</th>
+              <SortHeader label="Thời gian phá án" sortKey="time" sort={sort} onSort={onSort} />
+              <SortHeader label="Ngày làm" sortKey="date" sort={sort} onSort={onSort} />
               <th className="p-3 text-right">Chi tiết</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#243740]">
             {filtered.map((s, index) => (
               <tr key={s.id} className="hover:bg-[#1f313a] transition-colors">
-                {rankByScore && <td className="p-3 font-mono font-bold text-[#deb97b]">#{index + 1}</td>}
+                {ranked && <td className="p-3 font-mono font-bold text-[#deb97b]">#{index + 1}</td>}
                 <td className="p-3 font-semibold text-[#f1ecdf]">{s.user_name}</td>
                 <td className="p-3 text-[#d2c7b0]">{caseLabel(s.case_id)}</td>
                 <td className="p-3">{s.won ? <span className="text-[#7e9473] font-bold">✓ Phá án thành công</span> : <span className="text-[#d3765e]">✕ Sai/Chưa xong</span>}</td>
