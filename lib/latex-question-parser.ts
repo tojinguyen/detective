@@ -1,8 +1,8 @@
 import { parseArithmetic } from '@/lib/game';
 import type { Question, QuestionKind, QuestionOption } from '@/lib/content';
-import { tokeniseMath } from '@/lib/math-tokenizer';
+import { findTokenIndex, normaliseLatex, normaliseToken, tokeniseMath } from '@/lib/math-tokenizer';
 
-export { tokeniseMath } from '@/lib/math-tokenizer';
+export { findTokenIndex, normaliseToken, tokeniseMath } from '@/lib/math-tokenizer';
 
 export type ParsedQuestion = {
   question: Question;
@@ -24,7 +24,7 @@ const LABEL = {
 } as const;
 
 function clean(value: string) {
-  return value.trim().replace(/^\$|\$$/g, '').replace(/\\,/g, ' ').replace(/&/g, '').trim();
+  return normaliseLatex(value.trim().replace(/^\$|\$$/g, '').replace(/\\,/g, ' ').replace(/&/g, '')).replace(/\s+/g, ' ').trim();
 }
 
 function plainText(value: string) {
@@ -65,23 +65,23 @@ function section(block: string, start: RegExp, end?: RegExp) {
 function solutionLines(block: string) {
   const part = section(block, LABEL.solution, LABEL.wrongToken);
   const align = part.match(/\\begin\{align\*\}([\s\S]*?)\\end\{align\*\}/)?.[1] ?? '';
-  if (align.includes('&=')) {
-    const rows = align.split(/&=/);
-    const original = clean(rows[0]);
-    const transformations = rows.slice(1).map(row => '= ' + clean(row.replace(/\\\\\s*$/, '')));
-    return [original, ...transformations].filter(line => line.replace(/^=\s*/, '').trim());
+  // Mỗi hàng của align* kết thúc bằng \\ (không tính \\ nằm trong \left\{ … \right\}).
+  const rows = align.split(/\\\\(?![{}])/).filter(row => row.trim());
+  if (rows.some(row => row.includes('&='))) {
+    const sides = rows.map(row => {
+      const [left, ...right] = row.split('&=');
+      return { left: clean(left), right: clean(right.join('=')) };
+    });
+    // Phương trình: các hàng sau cũng có vế trái (x &= …) → mỗi hàng là một đẳng thức trọn vẹn.
+    if (sides.slice(1).some(side => side.left)) {
+      return sides.map(side => side.left ? side.left + ' = ' + side.right : '= ' + side.right).filter(line => line.replace(/^=\s*/, ''));
+    }
+    // Biến đổi biểu thức: hàng đầu là biểu thức gốc, các hàng sau là "= …". Biểu thức có tên (B &= …) giữ tên ở hàng đầu.
+    const [first, ...rest] = sides;
+    const head = /^[A-Za-z]$/.test(first.left) ? [first.left + ' = ' + first.right] : [first.left, '= ' + first.right];
+    return [...head, ...rest.map(side => '= ' + side.right)].filter(line => line.replace(/^=\s*/, ''));
   }
-  return align.split(/\\\\(?:[ \t]*\r?\n|[ \t]*$)/).map(line => clean(line)).filter(Boolean);
-}
-
-function normaliseToken(value: string) {
-  return value
-    .replace(/\s+/g, '')
-    .replace(/[−–—]/g, '-')
-    .replace(/\\(?:left|right|,)/g, '')
-    .replace(/\{,\}/g, ',')
-    .replace(/\\times|\\cdot/g, '*')
-    .replace(/\\div|:/g, '/');
+  return rows.map(line => clean(line)).filter(Boolean);
 }
 
 function choiceOptions(repairSection: string): QuestionOption[] {
@@ -198,9 +198,7 @@ function parseBlock(block: string, generatedId: number): ParsedQuestion | null {
   const candidateLines = errorLine >= 0 ? [errorLine] : bad.map((_, index) => index).slice(1);
   for (const index of candidateLines) {
     const rowTokens = tokeniseMath(bad[index]);
-    const wanted = normaliseToken(wrongToken);
-    let found = rowTokens.findIndex(token => normaliseToken(token) === wanted);
-    if (found < 0 && wanted.length > 1) found = rowTokens.findIndex(token => normaliseToken(token).includes(wanted));
+    const found = findTokenIndex(rowTokens, wrongToken);
     if (found >= 0) { errorLine = index; segments = rowTokens; target = found; break; }
   }
   if (target < 0) {
@@ -217,7 +215,9 @@ function parseBlock(block: string, generatedId: number): ParsedQuestion | null {
       : rawAnswer;
   const correctedSegments = [...segments];
   if (kind === 'symbol') correctedSegments[target] = replacement;
-  const correctedLine = (bad[errorLine]?.trim().startsWith('=') ? '= ' : '') + (kind === 'symbol' ? correctedSegments.join(' ') : replacement.replace(/^=\s*/, ''));
+  const continuesLine = bad[errorLine]?.trim().startsWith('=');
+  // Phương án dạng "B=…" thay cho hàng "= …" thì bỏ tên biểu thức để khỏi thành "= B=…".
+  const correctedLine = (continuesLine ? '= ' : '') + (kind === 'symbol' ? correctedSegments.join(' ') : replacement.replace(continuesLine ? /^(?:[A-Za-z]\s*)?=\s*/ : /^=\s*/, ''));
   const correct = [...bad.slice(0, errorLine), correctedLine];
   const interaction = interactionFor(kind);
 

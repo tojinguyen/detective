@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import katex from 'katex';
 import { CASE_01, CASE_02, CASE_03 } from '../lib/cases.ts';
 import { matchesClue, candidates, comparisonFeedback, verdict, parseArithmetic, equalsInteger, equalsArithmetic, isDetectionCorrect, isCorrectionCorrect } from '../lib/game.ts';
-import { tokeniseMath } from '../lib/math-tokenizer.ts';
+import { findTokenIndex, tokeniseMath } from '../lib/math-tokenizer.ts';
 import { formatInvestigationTime, investigationReport, traceStatus } from '../lib/investigation-report.ts';
 const questions = JSON.parse(readFileSync(new URL('../lib/questions.json', import.meta.url), 'utf8'));
 const all = [0, 1, 2, 3, 4];
@@ -157,6 +157,21 @@ test('sizing commands never become standalone clickable tokens', () => {
   for (const token of tokens) {
     assert.doesNotThrow(() => katex.renderToString(token, { throwOnError: true, strict: 'error', trust: false }), token);
   }
+});
+
+test('subtraction signs are separate tokens, negative numbers stay whole', () => {
+  assert.deepEqual(tokeniseMath('= 214-36-305'), ['214', '-', '36', '-', '305']);
+  assert.deepEqual(tokeniseMath('= -7,7 + 7,5 : 3'), ['-7,7', '+', '7,5', ':', '3']);
+  assert.deepEqual(tokeniseMath('x = -\\frac13+\\frac{17}{6}'), ['x', '=', '-\\frac{1}{3}', '+', '\\frac{17}{6}']);
+  assert.deepEqual(tokeniseMath('= 12+6^5:4-3'), ['12', '+', '6', '^5', ':', '4', '-', '3']);
+});
+
+test('wrong token can name its position by including what follows it', () => {
+  const tokens = tokeniseMath('= 92-55+8+45');
+  assert.equal(findTokenIndex(tokens, '+'), 3);
+  assert.equal(findTokenIndex(tokens, '+45'), 5);
+  assert.equal(findTokenIndex(tokens, '-55'), 1);
+  assert.equal(findTokenIndex(tokens, '+', 5), 5);
 });
 
 test('CASE_02 correctly determines STEM champion Mai', () => {

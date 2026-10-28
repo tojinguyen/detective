@@ -45,7 +45,7 @@ import {
   type QuestionOption,
 } from '@/lib/content';
 import { CASE_01, CASES } from '@/lib/cases';
-import { parseLatexQuestionBank, tokeniseMath, type ParsedQuestion } from '@/lib/latex-question-parser';
+import { findTokenIndex, parseLatexQuestionBank, tokeniseMath, type ParsedQuestion } from '@/lib/latex-question-parser';
 import { downloadJsonTemplate, parseQuestionsFromJson, QUESTION_TEMPLATE_JSON } from '@/lib/json-template';
 
 const GRADES = [6, 7, 8, 9] as const;
@@ -115,10 +115,6 @@ function draftFrom(question: Question): QuestionDraft {
     hint: question.hint,
     explanation: question.explanation,
   };
-}
-
-function normaliseToken(value: string) {
-  return value.replace(/\s+/g, '').replace(/[−–—]/g, '-').replace(/\\(?:left|right|,)/g, '').replace(/\{,\}/g, ',').replace(/\\times|\\cdot/g, '*').replace(/\\div|:/g, '/');
 }
 
 function repairLabel(kind: QuestionKind) {
@@ -438,7 +434,8 @@ export default function QuestionBankPage() {
     }
     const errorLine = requestedLine - 1;
     const segments = tokeniseMath(bad[errorLine]);
-    const target = segments.findIndex(token => normaliseToken(token) === normaliseToken(draft.wrongToken));
+    // Giữ đúng lần xuất hiện cũ khi dòng lỗi không đổi và có nhiều token giống nhau.
+    const target = findTokenIndex(segments, draft.wrongToken, errorLine === editingQuestion.errorLine ? editingQuestion.target : -1);
     if (target < 0) {
       setEditMessage('Không tìm thấy token sai trong dòng đã chọn. Hãy nhập đúng ký hiệu đang xuất hiện trên dòng đó.'); return;
     }
