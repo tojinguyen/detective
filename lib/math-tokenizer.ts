@@ -19,9 +19,12 @@ export function tokeniseMath(value: string) {
     const isBinary = token.length > 1 && token.startsWith('-') && previous !== undefined && /(?:[\d)\]}]|[A-Za-z]|\\})$/.test(previous) && previous !== '\\cdot' && previous !== '\\times' && previous !== '\\div';
     return isBinary ? ['-', token.slice(1)] : [token];
   });
-  // Số mũ dính vào cơ số (2^5, )^2) để hiển thị liền một khối, không thành chữ số lơ lửng.
+  // Số mũ dính vào cơ số (2^5, )^2) và hệ số dính vào biến (2x, -\frac{5}{6}x) để hiển thị liền một khối.
   return split.reduce<string[]>((result, token) => {
-    if (token.startsWith('^') && token.length > 1 && result.length) result[result.length - 1] += token;
+    const previous = result[result.length - 1];
+    const isPower = token.startsWith('^') && token.length > 1;
+    const isVariable = /^[A-Za-z]$/.test(token) && /^-?(?:\d+(?:\{,\}\d+|[.,]\d+)?|\\frac\{[^{}]+\}\{[^{}]+\})$/.test(previous ?? '');
+    if (previous !== undefined && (isPower || isVariable)) result[result.length - 1] += token;
     else result.push(token);
     return result;
   }, []);
