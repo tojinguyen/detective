@@ -1655,12 +1655,21 @@ export default function QuestionBankPage() {
                               >
                                 {key}
                               </button>
-                              <input
-                                value={draft[field]}
-                                onChange={e => setDraft({ ...draft, [field]: e.target.value })}
-                                placeholder={`Nhập nội dung phương án ${key}...`}
-                                className="w-full bg-transparent border-0 focus:outline-none text-xs text-[#f1ecdf] p-0"
-                              />
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <input
+                                  value={draft[field]}
+                                  onChange={e => setDraft({ ...draft, [field]: e.target.value })}
+                                  placeholder={`Nhập nội dung phương án ${key}...`}
+                                  aria-label={`Mã LaTeX phương án ${key}`}
+                                  className="w-full bg-transparent border-0 focus:outline-none font-mono text-[11px] text-[#8fa49a] focus:text-[#f1ecdf] p-0"
+                                />
+                                {/* Xem trước: học sinh thấy công thức đã hiển thị, không thấy mã \cdot, \frac… */}
+                                {draft[field].trim() && (
+                                  <div className="overflow-x-auto text-sm text-[#f1ecdf]">
+                                    <MathText value={draft[field]} />
+                                  </div>
+                                )}
+                              </div>
                               {isSelected && (
                                 <span className="text-[10px] uppercase font-bold text-[#ceac79] bg-[#ceac79]/20 px-1.5 py-0.5 rounded shrink-0">
                                   Đúng
