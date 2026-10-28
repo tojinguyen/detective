@@ -163,7 +163,10 @@ test('subtraction signs are separate tokens, negative numbers stay whole', () =>
   assert.deepEqual(tokeniseMath('= 214-36-305'), ['214', '-', '36', '-', '305']);
   assert.deepEqual(tokeniseMath('= -7,7 + 7,5 : 3'), ['-7,7', '+', '7,5', ':', '3']);
   assert.deepEqual(tokeniseMath('x = -\\frac13+\\frac{17}{6}'), ['x', '=', '-\\frac{1}{3}', '+', '\\frac{17}{6}']);
-  assert.deepEqual(tokeniseMath('= 12+6^5:4-3'), ['12', '+', '6', '^5', ':', '4', '-', '3']);
+  assert.deepEqual(tokeniseMath('= 12+6^5:4-3'), ['12', '+', '6^5', ':', '4', '-', '3']);
+  assert.deepEqual(tokeniseMath('12+3\\cdot 2^5:4-3'), ['12', '+', '3', '\\cdot', '2^5', ':', '4', '-', '3']);
+  assert.deepEqual(tokeniseMath('\\left(-\\frac16\\right)^2'), ['(', '-\\frac{1}{6}', ')^2']);
+  assert.equal(findTokenIndex(tokeniseMath('= 12+6^5:4-3'), '6'), 2);
 });
 
 test('wrong token can name its position by including what follows it', () => {
