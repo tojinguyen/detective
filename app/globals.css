@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
@@ -248,3 +248,8 @@
 
 
 
+/* Hồ sơ mật: chữ hiện dần như máy đánh chữ */
+.typewriter-text{font-family:'IBM Plex Mono','Courier New',monospace;letter-spacing:-.01em}
+.typewriter-caret{display:inline-block;width:.55em;height:1.1em;margin-left:1px;vertical-align:-.18em;background:#deb97b;animation:typewriter-blink .9s steps(1) infinite}
+@keyframes typewriter-blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.typewriter-caret{animation:none}}

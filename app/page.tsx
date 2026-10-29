@@ -26,6 +26,7 @@ import { CaseSelector } from '@/components/case-selector';
 import { CaseBriefingModal } from '@/components/case-briefing-modal';
 import { AppHeader } from '@/components/app-header';
 import { DetectiveHandbookModal } from '@/components/detective-handbook-modal';
+import { DetectiveMissionModal } from '@/components/detective-mission-modal';
 
 type Work = InvestigationRecord & { selection: string | null; answer: string; message: string };
 type Point = { x: number; y: number };
@@ -49,6 +50,7 @@ export default function Home() {
   const [authOpen, setAuthOpen] = useState(false);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [briefingCase, setBriefingCase] = useState<CaseDefinition | null>(null);
+  const [missionOpen, setMissionOpen] = useState(false);
   const [completedCases, setCompletedCases] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -234,7 +236,7 @@ export default function Home() {
 
   // Bộ đếm giờ điều tra toàn bộ quá trình: di chuyển, phòng, hồ sơ, kết luận
   useEffect(() => {
-    if (!isStarted || won) return;
+    if (!isStarted || won || missionOpen) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       setTotalSeconds(s => s + 1);
@@ -259,7 +261,7 @@ export default function Home() {
       }
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [isStarted, won, active, screen, tab]);
+  }, [isStarted, won, missionOpen, active, screen, tab]);
 
   // Tạm dừng khi rời tab và ghi nhận số lần rời tab
   useEffect(() => {
@@ -515,6 +517,7 @@ export default function Home() {
               const targetCase = briefingCase;
               setSelectedCaseId(targetCase.id);
               setBriefingCase(null);
+              setMissionOpen(true);
               setWork(getInitialWork(targetCase));
               setQuestions(defaultQuestionsForCase(targetCase));
               setActive(null);
@@ -855,6 +858,8 @@ export default function Home() {
         </DialogContent>
       </Dialog>
 
+
+      <DetectiveMissionModal open={missionOpen} onClose={() => setMissionOpen(false)} />
 
       <AlertDialog open={restart} onOpenChange={setRestart}><AlertDialogContent className="paper-modal"><AlertDialogHeader><AlertDialogTitle>Bắt đầu lại vụ án?</AlertDialogTitle><AlertDialogDescription>Các phiếu đã sửa, manh mối và bảng đối chiếu trong lượt này sẽ được đặt lại.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel className="secondary-paper-button">Tiếp tục lượt này</AlertDialogCancel><AlertDialogAction className="gold-button" onClick={reset}>Bắt đầu lại</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
 

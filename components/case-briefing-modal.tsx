@@ -1,10 +1,10 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CaseDefinition } from '@/lib/cases';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Clock, MapPin, AlertTriangle, Target, Users, LayoutGrid, ArrowLeft, Play, ShieldAlert, Sparkles, BookOpen } from 'lucide-react';
+import { Clock, MapPin, AlertTriangle, ArrowLeft, Play, ShieldAlert, Sparkles, FastForward } from 'lucide-react';
 
 interface CaseBriefingModalProps {
   open: boolean;
@@ -14,6 +14,22 @@ interface CaseBriefingModalProps {
   onBackToSelector: () => void;
 }
 
+const TYPE_SPEED_MS = 28;
+
+/** Gõ dần từng ký tự của `text`, trả về số ký tự đã hiện. */
+function useTypewriter(text: string, running: boolean) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    setCount(0);
+  }, [text]);
+  useEffect(() => {
+    if (!running || count >= text.length) return;
+    const timer = window.setTimeout(() => setCount(c => c + 1), TYPE_SPEED_MS);
+    return () => window.clearTimeout(timer);
+  }, [running, count, text]);
+  return [count, setCount] as const;
+}
+
 export function CaseBriefingModal({
   open,
   onOpenChange,
@@ -21,14 +37,45 @@ export function CaseBriefingModal({
   onStartInvestigation,
   onBackToSelector,
 }: CaseBriefingModalProps) {
+  const prologue = caseData?.prologue;
+  const background = prologue?.background || caseData?.story.summary || '';
+  const incident = prologue?.incident || 'Chiếc huy hiệu đã biến mất khỏi vị trí ban đầu. Các đầu mối thông tin bị chia nhỏ tại các phòng hiện trường.';
+
+  const [reducedMotion, setReducedMotion] = useState(false);
+  useEffect(() => {
+    setReducedMotion(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }, []);
+
+  const [backgroundCount, setBackgroundCount] = useTypewriter(background, open);
+  const backgroundDone = backgroundCount >= background.length;
+  const [incidentCount, setIncidentCount] = useTypewriter(incident, open && backgroundDone);
+  const typingDone = backgroundDone && incidentCount >= incident.length;
+
+  const skipTyping = () => {
+    setBackgroundCount(background.length);
+    setIncidentCount(incident.length);
+  };
+
+  // Mở lại hồ sơ thì gõ lại từ đầu; người dùng giảm chuyển động thì hiện ngay toàn bộ.
+  useEffect(() => {
+    if (!open) return;
+    if (reducedMotion) {
+      setBackgroundCount(background.length);
+      setIncidentCount(incident.length);
+    } else {
+      setBackgroundCount(0);
+      setIncidentCount(0);
+    }
+  }, [open, reducedMotion, background.length, incident.length, setBackgroundCount, setIncidentCount]);
+
   if (!caseData) return null;
 
-  const prologue = caseData.prologue;
+  const caret = <span className="typewriter-caret" aria-hidden="true" />;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="case-briefing-modal max-w-5xl w-[calc(100%-2rem)] max-h-[95dvh] overflow-y-auto p-5 sm:p-7 md:p-8 bg-gradient-to-b from-[#14252c] to-[#0a161b] border border-[#3b535d] text-[#e3ece7] shadow-[0_30px_100px_rgba(0,0,0,0.9)] rounded-xl"
+        className="case-briefing-modal max-w-3xl w-[calc(100%-2rem)] max-h-[95dvh] overflow-y-auto p-5 sm:p-7 md:p-8 bg-gradient-to-b from-[#14252c] to-[#0a161b] border border-[#3b535d] text-[#e3ece7] shadow-[0_30px_100px_rgba(0,0,0,0.9)] rounded-xl"
         showCloseButton={false}
       >
         {/* Header: Thông tin vụ án & Metadata */}
@@ -61,96 +108,63 @@ export function CaseBriefingModal({
           </div>
         </DialogHeader>
 
-        {/* 2-Column Wide Landscape Grid: Bối cảnh (Trái) & Nhiệm vụ / Hành động (Phải) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 my-4 sm:my-5 items-stretch">
-          {/* CỘT 1 (TRÁI): Bối cảnh & Sự kiện mất tích */}
-          <div className="flex flex-col gap-3 sm:gap-4">
-            {/* Box 1: Bối cảnh sự việc */}
-            <div className="story-card p-4 rounded-lg border border-[#2d434d] bg-[#112128]/85 space-y-1.5 flex-1">
-              <div className="flex items-center gap-1.5 text-[#deb97b] text-xs font-semibold tracking-wider uppercase">
-                <Sparkles size={14} />
-                <span>1. BỐI CẢNH SỰ VIỆC</span>
-              </div>
-              <p className="text-xs sm:text-[13px] text-[#c7d7d0] leading-relaxed font-sans">
-                {prologue?.background || caseData.story.summary}
-              </p>
+        {/* Bối cảnh & Sự kiện bất thường, hiện dần như máy đánh chữ */}
+        <div className="flex flex-col gap-3 sm:gap-4 my-4 sm:my-5">
+          <div className="story-card p-4 rounded-lg border border-[#2d434d] bg-[#112128]/85 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-[#deb97b] text-xs font-semibold tracking-wider uppercase">
+              <Sparkles size={14} />
+              <span>1. BỐI CẢNH SỰ VIỆC</span>
             </div>
-
-            {/* Box 2: Sự kiện bất thường */}
-            <div className="story-card p-4 rounded-lg border border-[#6b4733]/60 bg-[#241a15]/50 space-y-1.5 flex-1">
-              <div className="flex items-center gap-1.5 text-[#e89c72] text-xs font-semibold tracking-wider uppercase">
-                <AlertTriangle size={14} />
-                <span>2. SỰ KIỆN BẤT THƯỜNG</span>
-              </div>
-              <p className="text-xs sm:text-[13px] text-[#d9c4b7] leading-relaxed font-sans">
-                {prologue?.incident || 'Chiếc huy hiệu đã biến mất khỏi vị trí ban đầu. Các đầu mối thông tin bị chia nhỏ tại các phòng hiện trường.'}
-              </p>
-            </div>
+            {/* Giữ toàn văn ẩn để khung không nhảy kích thước khi đang gõ */}
+            <p className="typewriter-text text-[13px] sm:text-sm text-[#c7d7d0] leading-relaxed" aria-label={background}>
+              <span aria-hidden="true">{background.slice(0, backgroundCount)}</span>
+              {!backgroundDone && caret}
+              <span className="invisible" aria-hidden="true">{background.slice(backgroundCount)}</span>
+            </p>
           </div>
 
-          {/* CỘT 2 (PHẢI): Nhiệm vụ thám tử & Nút hành động */}
-          <div className="flex flex-col justify-between gap-3 sm:gap-4">
-            {/* Box 3: Nhiệm vụ trọng tâm */}
-            <div className="story-card p-4 rounded-lg border border-[#294c3e] bg-[#10251c]/60 space-y-2 flex-1">
-              <div className="flex items-center gap-1.5 text-[#54c48a] text-xs font-semibold tracking-wider uppercase">
-                <Target size={14} />
-                <span>3. NHIỆM VỤ THÁM TỬ</span>
-              </div>
-              <ul className="space-y-2 text-xs sm:text-[13px] text-[#bce0ce]">
-                {(prologue?.mission || [
-                  'Kiểm tra 5 phòng hiện trường và sửa các phiếu Toán có lỗi.',
-                  'Thu thập các mảnh dữ kiện về kích thước, thời gian và tuyến đường.',
-                  'Đối chiếu với 5 hồ sơ nhân vật để đưa ra kết luận duy nhất chính xác.'
-                ]).map((m, idx) => (
-                  <li key={idx} className="flex items-start gap-2">
-                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#1b3b2c] text-[#54c48a] text-[10px] font-bold shrink-0 mt-0.5 border border-[#2b5940]">
-                      {idx + 1}
-                    </span>
-                    <span>{m}</span>
-                  </li>
-                ))}
-              </ul>
+          <div className="story-card p-4 rounded-lg border border-[#6b4733]/60 bg-[#241a15]/50 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-[#e89c72] text-xs font-semibold tracking-wider uppercase">
+              <AlertTriangle size={14} />
+              <span>2. SỰ KIỆN BẤT THƯỜNG</span>
             </div>
-
-            {/* Chips tổng quan hiện trường */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="p-2.5 rounded-lg border border-[#253942] bg-[#0e1c22] flex items-center gap-2">
-                <LayoutGrid size={16} className="text-[#deb97b] shrink-0" />
-                <div className="text-[11px] leading-tight">
-                  <span className="block text-[#7a9388]">Hiện trường</span>
-                  <strong className="text-[#ded6c7] font-medium">{caseData.rooms.length} Căn phòng khóa</strong>
-                </div>
-              </div>
-
-              <div className="p-2.5 rounded-lg border border-[#253942] bg-[#0e1c22] flex items-center gap-2">
-                <Users size={16} className="text-[#deb97b] shrink-0" />
-                <div className="text-[11px] leading-tight">
-                  <span className="block text-[#7a9388]">Đối tượng</span>
-                  <strong className="text-[#ded6c7] font-medium">{caseData.people.length} Hồ sơ nhân vật</strong>
-                </div>
-              </div>
-            </div>
-
-            {/* Khối nút hành động chính: Bắt đầu phá án */}
-            <div className="pt-2 flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
-              <Button
-                variant="ghost"
-                onClick={onBackToSelector}
-                className="w-full sm:w-auto text-xs text-[#8fa79d] hover:text-[#f4eee2] hover:bg-[#182d36] h-10 px-3"
-              >
-                <ArrowLeft size={14} className="mr-1.5" />
-                Chọn vụ án khác
-              </Button>
-
-              <Button
-                onClick={onStartInvestigation}
-                className="w-full sm:flex-1 gold-button text-xs sm:text-sm font-semibold h-11 px-6 shadow-[0_4px_16px_rgba(222,185,123,0.35)] flex items-center justify-center gap-2"
-              >
-                <Play size={16} fill="currentColor" />
-                Bắt đầu phá án
-              </Button>
-            </div>
+            <p className="typewriter-text text-[13px] sm:text-sm text-[#d9c4b7] leading-relaxed" aria-label={incident}>
+              <span aria-hidden="true">{incident.slice(0, incidentCount)}</span>
+              {backgroundDone && !typingDone && caret}
+              <span className="invisible" aria-hidden="true">{incident.slice(incidentCount)}</span>
+            </p>
           </div>
+        </div>
+
+        {/* Khối nút hành động chính */}
+        <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
+          <Button
+            variant="ghost"
+            onClick={onBackToSelector}
+            className="w-full sm:w-auto text-xs text-[#8fa79d] hover:text-[#f4eee2] hover:bg-[#182d36] h-10 px-3"
+          >
+            <ArrowLeft size={14} className="mr-1.5" />
+            Chọn vụ án khác
+          </Button>
+
+          {typingDone ? (
+            <Button
+              onClick={onStartInvestigation}
+              className="w-full sm:w-auto gold-button text-xs sm:text-sm font-semibold h-11 px-8 shadow-[0_4px_16px_rgba(222,185,123,0.35)] flex items-center justify-center gap-2"
+            >
+              <Play size={16} fill="currentColor" />
+              Bắt đầu phá án
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              onClick={skipTyping}
+              className="w-full sm:w-auto text-xs text-[#deb97b] border border-[#83693f] hover:bg-[#292215] hover:text-[#f3d9a6] h-11 px-6 flex items-center justify-center gap-2"
+            >
+              <FastForward size={15} />
+              Hiện toàn bộ hồ sơ
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
