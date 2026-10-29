@@ -431,7 +431,7 @@ export default function Home() {
     setConclusionAttempts(0);
     setRankResult(null);
     setWork(getInitialWork(caseData));
-    setQuestions(defaultQuestionsForCase(caseData));
+    setQuestions(questionsForCase(readLocalContent(), caseData));
     setEliminated([]);
     setActive(null);
     setScreen('scene');
@@ -503,7 +503,7 @@ export default function Home() {
               setBriefingCase(null);
               setMissionOpen(true);
               setWork(getInitialWork(targetCase));
-              setQuestions(defaultQuestionsForCase(targetCase));
+              setQuestions(questionsForCase(readLocalContent(), targetCase));
               setActive(null);
               setScreen('scene');
               setEliminated([]);
