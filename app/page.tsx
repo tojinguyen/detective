@@ -744,47 +744,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* BẢNG TỔNG KẾT ĐIỂM CHI TIẾT */}
-            {rankResult?.scoreBreakdown && (
-              <div className="my-3">
-                <p className="paper-eyebrow">BẢNG ĐIỂM NGHIỆP VỤ VỤ ÁN</p>
-                <table className="score-summary-table">
-                  <thead>
-                    <tr>
-                      <th>Hạng mục</th>
-                      <th>Nhiệm vụ</th>
-                      <th>Tìm lỗi</th>
-                      <th>Sửa lỗi</th>
-                      <th>Gợi ý</th>
-                      <th className="text-right">Điểm</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rankResult.scoreBreakdown.rooms.map((r, i) => (
-                      <tr key={i}>
-                        <td><strong>Phòng {i + 1}</strong>: {caseData.rooms[i].name}</td>
-                        <td>+{r.completion}</td>
-                        <td>+{r.findScore}</td>
-                        <td>+{r.repairScore}</td>
-                        <td>+{r.hintScore}</td>
-                        <td className="text-right font-bold text-[#80633d]">+{r.total}/12</td>
-                      </tr>
-                    ))}
-                    <tr>
-                      <td><strong>Kết luận vụ án</strong></td>
-                      <td>+{rankResult.scoreBreakdown.conclusion.completion}</td>
-                      <td colSpan={3}>Chính xác: +{rankResult.scoreBreakdown.conclusion.accuracyScore}</td>
-                      <td className="text-right font-bold text-[#80633d]">+{rankResult.scoreBreakdown.conclusion.total}/40</td>
-                    </tr>
-                    <tr className="total-row">
-                      <td colSpan={5}><strong>TỔNG ĐIỂM VỤ ÁN</strong></td>
-                      <td className="text-right font-bold text-[#745c3d]">{rankResult.scoreBreakdown.totalScore}/100</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-
             <p className="paper-eyebrow">NHẬT KÝ ĐIỀU TRA</p>
             <div className="journal-summary">
               <span><b>{work.length}/{work.length}</b><small>Manh mối đã mở</small></span>
