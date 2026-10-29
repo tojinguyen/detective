@@ -25,7 +25,7 @@ export function DetectiveHandbookModal({ open, onOpenChange }: DetectiveHandbook
           <DialogTitle className="text-xl sm:text-2xl font-serif font-bold text-[#f4efe4] tracking-wide">
             Tự mình bước vào hiện trường
           </DialogTitle>
-          <DialogDescription className="text-xs text-[#9eb2a8] leading-relaxed">
+          <DialogDescription className="sr-only">
             Cẩm nang hướng dẫn điều tra hiện trường, phát hiện sai sót toán học và truy tìm thủ phạm.
           </DialogDescription>
         </DialogHeader>
@@ -38,27 +38,27 @@ export function DetectiveHandbookModal({ open, onOpenChange }: DetectiveHandbook
               <strong className="text-xs sm:text-sm font-semibold text-[#f1ece1]">Chọn căn phòng</strong>
             </div>
             <p className="text-xs text-[#9eb2a8] leading-relaxed m-0">
-              Bấm vào từng căn phòng; thám tử sẽ tự động di chuyển tới cửa để tiếp cận vật chứng.
+              Bấm vào căn phòng, thám tử sẽ tự đến chỗ vật chứng.
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-[#0f1f26]/90 border border-[#233b47] hover:border-[#3a5866] transition-colors">
             <div className="flex items-center gap-2">
               <span className="font-serif text-xl sm:text-2xl font-bold text-[#deb97b] leading-none">02</span>
-              <strong className="text-xs sm:text-sm font-semibold text-[#f1ece1]">Kiểm tra & Sửa lỗi</strong>
+              <strong className="text-xs sm:text-sm font-semibold text-[#f1ece1]">Tìm lỗi & sửa lỗi</strong>
             </div>
             <p className="text-xs text-[#9eb2a8] leading-relaxed m-0">
-              Bấm Điều tra. Tìm bước biến đổi sai đầu tiên, sau đó sửa lại cho đúng để giải mã manh mối bị phong ấn.
+              Bấm Điều tra, tìm lỗi sai đầu tiên rồi sửa đúng để mở manh mối.
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5 p-3 rounded-xl bg-[#0f1f26]/90 border border-[#233b47] hover:border-[#3a5866] transition-colors">
             <div className="flex items-center gap-2">
               <span className="font-serif text-xl sm:text-2xl font-bold text-[#deb97b] leading-none">03</span>
-              <strong className="text-xs sm:text-sm font-semibold text-[#f1ece1]">Đối chiếu & Kết luận</strong>
+              <strong className="text-xs sm:text-sm font-semibold text-[#f1ece1]">Đối chiếu & kết luận</strong>
             </div>
             <p className="text-xs text-[#9eb2a8] leading-relaxed m-0">
-              Manh mối sẽ tự động cập nhật vào Bảng hồ sơ. Mở khóa Buồng an ninh cuối cùng để xác định duy nhất một thủ phạm.
+              Manh mối sẽ tự cập nhật vào Bảng hồ sơ. Loại dần những người không phù hợp rồi bấm Bản kết luận.
             </p>
           </div>
         </div>
@@ -69,22 +69,18 @@ export function DetectiveHandbookModal({ open, onOpenChange }: DetectiveHandbook
             <ShieldAlert size={14} className="text-[#deb97b]" />
             <strong className="text-xs font-bold uppercase tracking-wider text-[#ffd78a]">Chuỗi quy tắc phá án</strong>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-[#b9ccc3] leading-relaxed">
+          <div className="grid grid-cols-1 gap-2 text-xs text-[#b9ccc3] leading-relaxed">
             <div className="flex items-start gap-2">
               <span className="text-[#deb97b] font-mono font-bold">1.</span>
-              <p className="m-0">Thu thập đủ tất cả manh mối ở các phòng thường để mở khóa Buồng an ninh.</p>
+              <p className="m-0">Thu thập đủ manh mối ở các phòng để mở Buồng an ninh.</p>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-[#deb97b] font-mono font-bold">2.</span>
-              <p className="m-0">Ở mức Dễ, dòng có lỗi được khoanh vùng sẵn. Mức Trung bình trở lên cần rà soát toàn bộ.</p>
+              <p className="m-0">Dùng HỒ SƠ NHÂN VẬT để đối chiếu và loại dần những người không phù hợp. Loại nhầm thì bấm lại hồ sơ đó để khôi phục.</p>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-[#deb97b] font-mono font-bold">3.</span>
-              <p className="m-0">Sử dụng nút loại trừ trên Bảng hồ sơ nhân vật để thu hẹp dần các đối tượng nghi vấn.</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-[#deb97b] font-mono font-bold">4.</span>
-              <p className="m-0">Bấm &quot;Bản kết luận&quot; để nộp phán quyết, nhận Bảng điểm nghiệp vụ và thăng cấp Thám tử.</p>
+              <p className="m-0">Bấm &quot;Bản kết luận&quot; để công bố phán đoán, nhận Bảng điểm nghiệp vụ và thăng cấp Thám tử.</p>
             </div>
           </div>
         </div>
