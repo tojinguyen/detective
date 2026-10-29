@@ -37,12 +37,12 @@
 
 /* Case 01: room selection now drives the detective automatically. */
 .detective-player{transition:left .48s cubic-bezier(.22,.8,.3,1),top .48s cubic-bezier(.22,.8,.3,1)}
-.game-console.auto-console{grid-template-columns:minmax(0,1fr) 250px}
+.game-console.auto-console{grid-template-columns:minmax(0,1fr)}
 .auto-console .console-status{min-height:66px}
 .auto-console .interact-button{grid-column:auto;min-height:66px!important}
 .evidence-filter-strip{grid-template-columns:repeat(5,minmax(0,1fr))}
 @media(max-width:900px){.evidence-filter-strip{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:700px){.game-console.auto-console{grid-template-columns:minmax(0,1fr) 210px}.auto-console .interact-button{grid-column:auto}}
+@media(max-width:700px){.game-console.auto-console{grid-template-columns:minmax(0,1fr)}.auto-console .interact-button{grid-column:auto}}
 @media(max-width:520px){.game-console.auto-console{grid-template-columns:1fr}.auto-console .interact-button{grid-column:1}.evidence-filter-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){.board-tab{padding:16px 10px}.suspect-board-heading{align-items:flex-start}.suspect-board-heading .quiet-button{font-size:10px}.suspect-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.suspect-card:nth-child(4){grid-column:auto}.suspect-card:last-child{grid-column:1/3;width:min(100%,280px);justify-self:center}.suspect-name{min-height:50px;padding:6px 8px}.suspect-name>strong{font-size:16px}.suspect-name>small{font-size:6.5px}.suspect-data>span{padding:5px 4px;column-gap:4px}.evidence-filter{padding:7px;column-gap:6px}.evidence-filter>b{font-size:10px}.conclude-button{margin-left:0}}@media(max-width:380px){.suspect-grid{grid-template-columns:1fr;gap:8px}.suspect-card:last-child{grid-column:auto;width:100%}}
 

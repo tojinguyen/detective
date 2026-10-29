@@ -196,24 +196,6 @@ export default function Home() {
     } catch {}
   }, [isStarted, totalSeconds, boardSeconds, roomTimes, tabExits, inactiveSeconds, work, eliminated, conclusionAttempts, won, user?.id]);
 
-  const openRoom = useCallback((index: number) => {
-    if (!isStarted) setIsStarted(true);
-    if (caseData.rooms[index].final && !sideRoomsDone) {
-      setWorldMessage(caseData.rooms[index].name + ' còn khóa. Hãy thu thập đủ chứng cứ ở các phòng trước.');
-      return;
-    }
-    setActive(index);
-    setScreen('scene');
-  }, [sideRoomsDone, isStarted]);
-
-  const enterNearbyRoom = useCallback(() => {
-    if (nearbyRoom < 0) {
-      setWorldMessage('Chọn một căn phòng trước nhé.');
-      return;
-    }
-    openRoom(nearbyRoom);
-  }, [nearbyRoom, openRoom]);
-
   function approachRoom(index: number) {
     if (!isStarted) setIsStarted(true);
     const room = caseData.rooms[index];
@@ -228,7 +210,9 @@ export default function Home() {
     if (movementTimer.current) clearTimeout(movementTimer.current);
     movementTimer.current = setTimeout(() => {
       setWalking(false);
-      setWorldMessage('Đã tới ' + room.name + '. Bấm Điều tra để bước vào.');
+      setWorldMessage('Đang điều tra ' + room.name + '.');
+      setActive(index);
+      setScreen('scene');
     }, 520);
   }
 
@@ -619,8 +603,7 @@ export default function Home() {
                     <div className={'detective-player facing-' + facing + (walking ? ' is-walking' : '')} style={{ left: player.x + '%', top: player.y + '%' }} role="img" aria-label="Nhân vật thám tử tự di chuyển theo phòng người chơi chọn"><span className="detective-shadow" /><span className="detective-sprite" style={{ backgroundPosition: SPRITE_POSITIONS[facing][walking ? 'walk' : 'idle'] }} /></div>
                   </div>
                   <div className="game-console auto-console">
-                    <div className="console-status"><span><CheckCircle2 size={14} /> TIẾN ĐỘ CHỨNG CỨ · {revealed.length}/{caseData.clues.length}</span><p role="status">{worldMessage}</p><small>Chọn phòng → nhân vật tự di chuyển → bấm Điều tra</small></div>
-                    <Button className={'interact-button ' + (nearbyRoom >= 0 && !walking ? 'ready' : '')} disabled={nearbyRoom < 0 || walking} onClick={enterNearbyRoom}><Search size={21} /><span><small>{walking ? 'ĐANG DI CHUYỂN' : nearbyRoom >= 0 ? 'ĐÃ TỚI CỬA' : 'CHƯA CHỌN PHÒNG'}</small>{walking ? 'Chờ thám tử tới nơi…' : nearbyRoom >= 0 ? 'Điều tra ' + caseData.rooms[nearbyRoom].name : 'Điều tra'}</span></Button>
+                    <div className="console-status"><span><CheckCircle2 size={14} /> TIẾN ĐỘ CHỨNG CỨ · {revealed.length}/{caseData.clues.length}</span><p role="status">{worldMessage}</p><small>Chọn phòng → nhân vật tự di chuyển và mở hiện trường</small></div>
                   </div>
                 </div>
               </TabsContent>
