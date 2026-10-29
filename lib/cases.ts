@@ -119,7 +119,7 @@ export const CASE_01: CaseDefinition = {
     location: 'Hội trường sự kiện E·RASE',
     time: '16:12 · Trước lễ tuyên dương 48 phút',
     background: 'Buổi lễ tuyên dương học sinh xuất sắc sắp chính thức diễn ra tại hội trường trung tâm. Chiếc huy hiệu danh dự mạ vàng - biểu tượng cao quý nhất của buổi lễ - đã được giao cho ban tổ chức bảo quản cẩn mật trong tủ kính an toàn.',
-    incident: 'Đúng 16:12, ban tổ chức kiểm tra trước giờ khai mạc thì phát hiện chiếc huy hiệu đã không còn trong tủ! Tờ bàn giao thiết bị bị thất lạc trong quá trình chuyển đồ, camera hành lang bị trục trặc khiến việc xác định người cầm huy hiệu bị gián đoạn.',
+    incident: 'Đúng 16:12, ban tổ chức mở tủ kiểm tra thì huy hiệu đã biến mất! Không ai biết huy hiệu đang ở đâu.',
     mission: [
       'Điều tra 5 phòng hiện trường, tìm lỗi sai và sửa đúng các phiếu bài tập Toán để khôi phục dữ liệu vật chứng.',
       'Thu thập đủ 5 manh mối về đặc điểm nhận dạng, kích thước hộp đồ vật và hành trình di chuyển.',
