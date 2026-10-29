@@ -4,7 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
-  title: "E·RASE — Chiếc huy hiệu biến mất",
+  title: "E·RASE",
   description: "Sửa lỗi Toán, khôi phục dữ liệu và đối chiếu hồ sơ nhân vật để tìm người đã di chuyển chiếc huy hiệu. Một vụ án chơi thử của E·RASE.",
 };
 
@@ -16,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="vi">
       <head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

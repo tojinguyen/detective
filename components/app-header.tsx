@@ -77,13 +77,7 @@ export function AppHeader({
             <span className="font-serif text-2xl font-bold tracking-wider">E·RASE</span>
           </Link>
 
-          <span className="h-4 w-px bg-[#354c57] hidden sm:block shrink-0" />
-
-          {currentView === 'selector' && (
-            <span className="text-[11px] tracking-widest text-[#8ea49a] uppercase hidden md:inline font-sans font-medium shrink-0">
-              TỔNG CỤC THÁM TỬ TOÁN HỌC
-            </span>
-          )}
+          {currentView === 'game' && <span className="h-4 w-px bg-[#354c57] hidden sm:block shrink-0" />}
 
           {currentView === 'game' && (
             <div className="flex items-center gap-1.5 text-xs text-[#a3b7ae] truncate">
