@@ -1,17 +1,38 @@
 import { supabase } from '@/lib/supabase';
+import { calculateCaseScore } from '@/lib/scoring';
+
+type SessionRow = {
+  case_id: string;
+  summary: { score?: number; score_breakdown?: { totalScore?: number }; conclusion_attempts?: number } | null;
+  records: { findMisses?: number; repairMisses?: number; hintOpened?: boolean }[] | null;
+};
+
+/** Điểm của một phiên thắng: ưu tiên điểm đã lưu, phiên cũ thiếu điểm thì tính lại từ chi tiết từng phòng. */
+function sessionScore(row: SessionRow) {
+  const saved = row.summary?.score ?? row.summary?.score_breakdown?.totalScore;
+  if (typeof saved === 'number') return saved;
+  if (!Array.isArray(row.records) || !row.records.length) return 0;
+  const rooms = row.records.map(r => ({
+    stage: 'done',
+    findMisses: r.findMisses ?? 0,
+    repairMisses: r.repairMisses ?? 0,
+    hintOpened: Boolean(r.hintOpened),
+  }));
+  const misses = Math.max(0, (row.summary?.conclusion_attempts ?? 1) - 1);
+  return calculateCaseScore(rooms, true, misses).totalScore;
+}
 
 /** Điểm tốt nhất của từng vụ án người chơi đã phá, lấy từ các phiên điều tra thắng trên database. */
 export async function fetchCareer(userId: string): Promise<Record<string, number>> {
   const { data, error } = await supabase
     .from('investigation_sessions')
-    .select('case_id, summary')
+    .select('case_id, summary, records')
     .eq('user_id', userId)
     .eq('won', true);
   if (error) throw error;
   const career: Record<string, number> = {};
-  for (const row of data ?? []) {
-    const score = Number((row.summary as { score?: number } | null)?.score) || 0;
-    career[row.case_id] = Math.max(career[row.case_id] ?? 0, score);
+  for (const row of (data ?? []) as SessionRow[]) {
+    career[row.case_id] = Math.max(career[row.case_id] ?? 0, sessionScore(row));
   }
   return career;
 }

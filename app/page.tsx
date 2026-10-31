@@ -480,8 +480,8 @@ export default function Home() {
 
         <CaseSelector
           userName={profile?.full_name || user?.email?.split('@')[0] || 'Học viên'}
-          rankTitle={rankResult?.rank || 'Thám tử tập sự'}
-          careerScore={rankResult?.totalCareerScore || 0}
+          rankTitle={careerRank}
+          careerScore={careerScore}
           completedCasesCount={completedCases.length}
           completedCaseIds={completedCases}
           onSelectCase={(c) => {
@@ -556,8 +556,8 @@ export default function Home() {
         onResetCase={() => setRestart(true)}
         onSignOut={signOut}
         onSignIn={() => setAuthOpen(true)}
-        rankTitle={rankResult?.rank || 'Thám tử tập sự'}
-        careerScore={rankResult?.totalCareerScore || 0}
+        rankTitle={careerRank}
+        careerScore={careerScore}
       />
       <main id="main" className="workspace game-workspace">
         <div className="play-layout hud-layout">
