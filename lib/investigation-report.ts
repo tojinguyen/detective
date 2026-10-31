@@ -16,7 +16,7 @@ export type TraceStatus = 'immediate' | 'independent' | 'assisted' | 'unfinished
 
 export const TRACE_STATUS_LABELS: Record<TraceStatus, string> = {
   immediate: 'Xác định ngay',
-  independent: 'Tự xác minh',
+  independent: 'Đã hoàn tất',
   assisted: 'Xác minh có hỗ trợ',
   unfinished: 'Chưa hoàn tất',
 };

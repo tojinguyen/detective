@@ -748,7 +748,6 @@ export default function Home() {
             <div className="journal-summary">
               <span><b>{work.length}/{work.length}</b><small>Manh mối đã mở</small></span>
               <span><b>{report.immediate}</b><small>Xác định ngay</small></span>
-              <span><b>{report.independent}</b><small>Tự xác minh</small></span>
               <span><b>{report.assisted}</b><small>Có hỗ trợ</small></span>
               <span><b>{formatInvestigationTime(totalSeconds)}</b><small>Thời gian điều tra</small></span>
             </div>
