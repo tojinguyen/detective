@@ -8,6 +8,7 @@ import { Search, ArrowRight, Users, RotateCcw, Lightbulb, Check, LockKeyhole, Ca
 import { useAuth } from '@/lib/auth-context';
 import { AuthModal } from '@/components/auth-modal';
 import { supabase } from '@/lib/supabase';
+import { fetchCareer, fetchProgress, saveProgress, deleteProgress } from '@/lib/user-data';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -17,8 +18,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { candidates, comparisonFeedback, verdict, isDetectionCorrect, isCorrectionCorrect } from '@/lib/game';
 import { CASE_01, CASES, getCase, type Direction, type CaseDefinition } from '@/lib/cases';
-import { defaultQuestionsForCase, questionsForCase, readLocalContent, writeLocalContent, mergeCloudQuestions, mergeCloudAssignments, type Question } from '@/lib/content';
-import { fetchAssignmentsFromDb, fetchQuestionsFromDb } from '@/lib/questions-db';
+import { DEFAULT_BANK_CONTENT, defaultQuestionsForCase, questionsForCase, type BankContent, type Question } from '@/lib/content';
+import { loadContent } from '@/lib/questions-db';
 import { tokeniseMath } from '@/lib/latex-question-parser';
 import { formatInvestigationTime, investigationReport, traceStatus, TRACE_STATUS_LABELS, type InvestigationRecord } from '@/lib/investigation-report';
 import { evaluateRank, type DetectiveRank, type CaseScoreBreakdown } from '@/lib/scoring';
@@ -45,21 +46,41 @@ function CloseButton() {
   return <DialogClose asChild><button className="close-button" aria-label="Đóng cửa sổ"><X size={19} /></button></DialogClose>;
 }
 
+type SavedProgress = {
+  isStarted?: boolean;
+  won?: boolean;
+  totalSeconds?: number;
+  boardSeconds?: number;
+  roomTimes?: number[];
+  tabExits?: number;
+  inactiveSeconds?: number;
+  work?: Work[];
+  eliminated?: number[];
+  conclusionAttempts?: number;
+};
+
 export default function Home() {
   const { user, profile, isAdmin, signOut, loading } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [briefingCase, setBriefingCase] = useState<CaseDefinition | null>(null);
   const [missionOpen, setMissionOpen] = useState(false);
-  const [completedCases, setCompletedCases] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = localStorage.getItem('erase_completed_cases');
-        return stored ? JSON.parse(stored) : [];
-      } catch {}
-    }
-    return [];
-  });
+  // Điểm tốt nhất từng vụ án đã phá của tài khoản hiện tại, lấy từ database
+  const [career, setCareer] = useState<Record<string, number>>({});
+  const completedCases = Object.keys(career);
+  const careerScore = Object.values(career).reduce((sum, score) => sum + score, 0);
+  const careerRank = evaluateRank(completedCases.length, careerScore).rank;
+
+  // Danh sách vụ án đã phá thuộc về từng tài khoản
+  useEffect(() => {
+    setCareer({});
+    if (!user?.id) return;
+    let cancelled = false;
+    fetchCareer(user.id)
+      .then(data => { if (!cancelled) setCareer(data); })
+      .catch(err => console.error('Không thể tải vụ án đã phá:', err));
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   const caseData: CaseDefinition = (selectedCaseId ? getCase(selectedCaseId) : null) || CASE_01;
 
@@ -109,6 +130,14 @@ export default function Home() {
     scoreBreakdown: CaseScoreBreakdown;
   } | null>(null);
 
+  // Đổi tài khoản: bỏ trạng thái ván chơi của tài khoản trước
+  useEffect(() => {
+    setWon(false);
+    setIsStarted(false);
+    setSelectedCaseId(null);
+    setRankResult(null);
+  }, [user?.id]);
+
   const movementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hiddenTimestamp = useRef<number | null>(null);
 
@@ -135,15 +164,16 @@ export default function Home() {
     setWorldMessage('Cuộc điều tra đã bắt đầu! Hãy chọn một căn phòng để thám tử di chuyển tới.');
   }, []);
 
-  // Khôi phục tiến trình từ localStorage khi tải trang hoặc đổi vụ án
+  // Khôi phục tiến trình từ database khi tải trang hoặc đổi vụ án
+  const progressReady = useRef(false);
   useEffect(() => {
-    if (!selectedCaseId) return;
-    const saveKey = `erase_progress_${caseData.id}_${user?.id || 'guest'}`;
-    try {
-      const saved = localStorage.getItem(saveKey);
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.isStarted && !data.won) {
+    progressReady.current = false;
+    if (!selectedCaseId || !user?.id) return;
+    let cancelled = false;
+    fetchProgress<SavedProgress>(user.id, caseData.id)
+      .then(data => {
+        if (cancelled) return;
+        if (data?.isStarted && !data.won) {
           setIsStarted(true);
           setTotalSeconds(data.totalSeconds || 0);
           setBoardSeconds(data.boardSeconds || 0);
@@ -154,47 +184,34 @@ export default function Home() {
           if (Array.isArray(data.eliminated)) setEliminated(data.eliminated);
           if (typeof data.conclusionAttempts === 'number') setConclusionAttempts(data.conclusionAttempts);
         }
-      }
-    } catch {}
+      })
+      .catch(err => console.error('Không thể tải tiến trình:', err))
+      .finally(() => { if (!cancelled) progressReady.current = true; });
+    return () => { cancelled = true; };
   }, [caseData.id, selectedCaseId, user?.id]);
 
-  // Cập nhật danh sách vụ án đã phá khi chiến thắng
+  // Lưu tiến trình lên database: định kỳ 5 giây và khi rời tab/đóng trang
+  const progressPayload = useRef<Record<string, unknown> | null>(null);
   useEffect(() => {
-    if (won && caseData) {
-      setCompletedCases(prev => {
-        if (!prev.includes(caseData.id)) {
-          const updated = [...prev, caseData.id];
-          try {
-            localStorage.setItem('erase_completed_cases', JSON.stringify(updated));
-          } catch {}
-          return updated;
-        }
-        return prev;
-      });
-    }
-  }, [won, caseData]);
-
-  // Lưu tiến trình vào localStorage khi có thay đổi
+    progressPayload.current = isStarted && !won ? {
+      isStarted, totalSeconds, boardSeconds, roomTimes, tabExits, inactiveSeconds, work, eliminated, conclusionAttempts, won,
+    } : null;
+  });
   useEffect(() => {
-    if (!isStarted) return;
-    const saveKey = `erase_progress_${caseData.id}_${user?.id || 'guest'}`;
-    const payload = {
-      isStarted,
-      totalSeconds,
-      boardSeconds,
-      roomTimes,
-      tabExits,
-      inactiveSeconds,
-      work,
-      eliminated,
-      conclusionAttempts,
-      won,
-      updatedAt: Date.now(),
+    if (!isStarted || !user?.id) return;
+    const uid = user.id, caseId = caseData.id;
+    const flush = () => {
+      if (!progressReady.current || !progressPayload.current) return;
+      saveProgress(uid, caseId, progressPayload.current).catch(err => console.error('Không thể lưu tiến trình:', err));
     };
-    try {
-      localStorage.setItem(saveKey, JSON.stringify(payload));
-    } catch {}
-  }, [isStarted, totalSeconds, boardSeconds, roomTimes, tabExits, inactiveSeconds, work, eliminated, conclusionAttempts, won, user?.id]);
+    const timer = setInterval(flush, 5000);
+    document.addEventListener('visibilitychange', flush);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', flush);
+      flush();
+    };
+  }, [isStarted, caseData.id, user?.id]);
 
   function approachRoom(index: number) {
     if (!isStarted) setIsStarted(true);
@@ -278,22 +295,19 @@ export default function Home() {
     return () => document.removeEventListener('visibilitychange', trackVisibility);
   }, [isStarted, won, active]);
 
+  // Nội dung bài tập và bộ gán phòng lấy từ database
+  const bankContent = useRef<BankContent>(DEFAULT_BANK_CONTENT);
   useEffect(() => {
-    const initial = readLocalContent();
-    setQuestions(questionsForCase(initial, caseData));
-
-    // Chỉ đọc từ Cloud; bài và vụ chưa đồng bộ (pendingSyncIds, pendingCaseIds) vẫn giữ bản trên máy.
-    Promise.allSettled([fetchQuestionsFromDb(), fetchAssignmentsFromDb()]).then(([dbQuestions, dbAssignments]) => {
-      let nextContent = readLocalContent();
-      if (dbQuestions.status === 'fulfilled') nextContent = mergeCloudQuestions(nextContent, dbQuestions.value);
-      else console.warn('Không thể nạp đề từ Cloud:', dbQuestions.reason);
-      if (dbAssignments.status === 'fulfilled') nextContent = mergeCloudAssignments(nextContent, dbAssignments.value);
-      else console.warn('Không thể nạp bộ gán phòng từ Cloud:', dbAssignments.reason);
-      writeLocalContent(nextContent);
-      setQuestions(questionsForCase(nextContent, caseData));
-    });
+    let cancelled = false;
+    loadContent()
+      .then(content => {
+        if (cancelled) return;
+        bankContent.current = content;
+        setQuestions(questionsForCase(content, caseData));
+      })
+      .catch(err => console.warn('Không thể nạp đề từ database:', err));
+    return () => { cancelled = true; };
   }, [caseData]);
-
 
   function updateWork(patch: Partial<Work>) {
     if (active === null) return;
@@ -348,27 +362,11 @@ export default function Home() {
       });
 
       // Xử lý Rank & Điểm sự nghiệp tích lũy qua các vụ án
-      let completedCasesCount = 1;
-      let totalCareerScore = rep.scoreBreakdown.totalScore;
-
-      try {
-        const historyKey = `erase_career_${user?.id || 'guest'}`;
-        const prevHistoryRaw = localStorage.getItem(historyKey);
-        let careerHistory: Record<string, number> = {};
-        if (prevHistoryRaw) {
-          try {
-            careerHistory = JSON.parse(prevHistoryRaw);
-          } catch {}
-        }
-        // Lưu điểm tốt nhất của vụ án này
-        careerHistory[caseData.id] = Math.max(careerHistory[caseData.id] || 0, rep.scoreBreakdown.totalScore);
-        localStorage.setItem(historyKey, JSON.stringify(careerHistory));
-
-        completedCasesCount = Object.keys(careerHistory).length;
-        totalCareerScore = Object.values(careerHistory).reduce((a, b) => a + b, 0);
-      } catch (err) {
-        console.warn('Lỗi xử lý rank history:', err);
-      }
+      // Điểm tốt nhất mỗi vụ án: gộp phiên vừa thắng vào dữ liệu đã tải từ database
+      const careerHistory: Record<string, number> = { ...career };
+      careerHistory[caseData.id] = Math.max(careerHistory[caseData.id] || 0, rep.scoreBreakdown.totalScore);
+      const completedCasesCount = Object.keys(careerHistory).length;
+      const totalCareerScore = Object.values(careerHistory).reduce((a, b) => a + b, 0);
 
       const evaluated = evaluateRank(completedCasesCount, totalCareerScore);
       setRankResult({
@@ -380,7 +378,7 @@ export default function Home() {
 
       // Ghi dữ liệu về Supabase
       try {
-        await supabase.from('investigation_sessions').insert({
+        const { error: insertError } = await supabase.from('investigation_sessions').insert({
           user_id: user?.id ?? null,
           user_name: profile?.full_name ?? 'Học sinh ẩn danh',
           case_id: caseData.id,
@@ -413,15 +411,17 @@ export default function Home() {
             career_score: totalCareerScore,
           }
         });
+        if (insertError) throw insertError;
       } catch (e) {
         console.error('Không thể lưu session:', e);
       }
+      setCareer(careerHistory);
+      if (user?.id) deleteProgress(user.id, caseData.id).catch(err => console.error('Không thể xóa tiến trình:', err));
     }
   }
 
   function reset() {
-    const saveKey = `erase_progress_${caseData.id}_${user?.id || 'guest'}`;
-    try { localStorage.removeItem(saveKey); } catch {}
+    if (user?.id) deleteProgress(user.id, caseData.id).catch(err => console.error('Không thể xóa tiến trình:', err));
     setIsStarted(false);
     setTotalSeconds(0);
     setBoardSeconds(0);
@@ -431,7 +431,7 @@ export default function Home() {
     setConclusionAttempts(0);
     setRankResult(null);
     setWork(getInitialWork(caseData));
-    setQuestions(questionsForCase(readLocalContent(), caseData));
+    setQuestions(questionsForCase(bankContent.current, caseData));
     setEliminated([]);
     setActive(null);
     setScreen('scene');
@@ -474,8 +474,8 @@ export default function Home() {
           onOpenHelp={() => setHelp(true)}
           onSignOut={signOut}
           onSignIn={() => setAuthOpen(true)}
-          rankTitle={rankResult?.rank || 'Thám tử tập sự'}
-          careerScore={rankResult?.totalCareerScore || 0}
+          rankTitle={careerRank}
+          careerScore={careerScore}
         />
 
         <CaseSelector
@@ -503,7 +503,7 @@ export default function Home() {
               setBriefingCase(null);
               setMissionOpen(true);
               setWork(getInitialWork(targetCase));
-              setQuestions(questionsForCase(readLocalContent(), targetCase));
+              setQuestions(questionsForCase(bankContent.current, targetCase));
               setActive(null);
               setScreen('scene');
               setEliminated([]);

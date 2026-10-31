@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { findLocalQuestion, questionIdsForCase, type LocalContent, type Question, type QuestionKind } from '@/lib/content';
+import { buildContent, findLocalQuestion, questionIdsForCase, type BankContent, type Question, type QuestionKind } from '@/lib/content';
 import { CASES } from '@/lib/cases';
 
 export interface DbQuestionRow {
@@ -80,8 +80,8 @@ export function fromDbQuestion(row: any): Question {
 }
 
 /**
- * Tải toàn bộ câu hỏi trên Cloud. Ném lỗi khi không đọc được, để bên gọi
- * phân biệt "Cloud trống" với "không kết nối được" và không ghi đè dữ liệu trên máy.
+ * Tải toàn bộ câu hỏi trên database. Ném lỗi khi không đọc được, để bên gọi
+ * phân biệt "database trống" với "không kết nối được".
  */
 export async function fetchQuestionsFromDb(): Promise<Question[]> {
   const { data, error } = await supabase
@@ -92,32 +92,19 @@ export async function fetchQuestionsFromDb(): Promise<Question[]> {
   return (data ?? []).map(fromDbQuestion);
 }
 
-export type PushResult = {
-  /** Bài đã ghi xong, kèm bản đã gửi (null = đã xóa) để bên gọi biết bản đó còn mới nhất không. */
-  synced: { id: number; snapshot: Question | null }[];
-  error?: string;
-};
-
-/**
- * Đẩy các thay đổi trong pendingSyncIds lên Cloud: bài còn trên máy thì upsert,
- * bài không còn thì xóa.
- */
-export async function pushPendingQuestions(content: LocalContent): Promise<PushResult> {
-  const entries = [...new Set(content.pendingSyncIds)].map(id => ({ id, snapshot: findLocalQuestion(content, id) }));
+/** Ghi các bài trong ids lên database: bài còn trong kho thì upsert, bài không còn thì xóa. */
+export async function saveQuestions(content: BankContent, ids: number[]) {
+  const entries = [...new Set(ids)].map(id => ({ id, snapshot: findLocalQuestion(content, id) }));
   const upserts = entries.filter(e => e.snapshot);
   const deletes = entries.filter(e => !e.snapshot);
-  const synced: PushResult['synced'] = [];
-  const errors: string[] = [];
-
   if (upserts.length) {
     const { error } = await supabase.from('questions').upsert(upserts.map(e => toDbQuestion(e.snapshot!)));
-    if (error) errors.push(error.message); else synced.push(...upserts);
+    if (error) throw new Error(error.message);
   }
   if (deletes.length) {
     const { error } = await supabase.from('questions').delete().in('id', deletes.map(e => e.id));
-    if (error) errors.push(error.message); else synced.push(...deletes);
+    if (error) throw new Error(error.message);
   }
-  return { synced, error: errors.length ? errors.join('; ') : undefined };
 }
 
 /** Bộ gán phòng trên Cloud, dạng caseId → id bài theo thứ tự phòng (phòng thiếu dùng bài gốc). */
@@ -137,29 +124,28 @@ export async function fetchAssignmentsFromDb(): Promise<Record<string, number[]>
   return result;
 }
 
-export type AssignmentPushResult = {
-  /** Vụ đã ghi xong, kèm mảng đã gửi để bên gọi biết bản đó còn mới nhất không. */
-  synced: { caseId: string; snapshot: number[] | undefined }[];
-  error?: string;
-};
-
-/** Ghi bộ gán phòng của các vụ trong pendingCaseIds lên Cloud (mỗi phòng một dòng). */
-export async function pushPendingAssignments(content: LocalContent): Promise<AssignmentPushResult> {
-  const cases = CASES.filter(c => content.pendingCaseIds.includes(c.id));
-  if (!cases.length) return { synced: [] };
+/** Ghi bộ gán phòng của các vụ trong caseIds lên database (mỗi phòng một dòng). */
+export async function saveAssignments(content: BankContent, caseIds: string[]) {
+  const cases = CASES.filter(c => caseIds.includes(c.id));
+  if (!cases.length) return;
   const rows = cases.flatMap(c => questionIdsForCase(content, c).map((questionId, roomIndex) => ({
     case_id: c.id,
     room_index: roomIndex,
     question_id: questionId,
   })));
   const { error } = await supabase.from('case_assignments').upsert(rows, { onConflict: 'case_id,room_index' });
-  if (error) return { synced: [], error: error.message };
-  return { synced: cases.map(c => ({ caseId: c.id, snapshot: content.caseQuestionIds[c.id] })) };
+  if (error) throw new Error(error.message);
+}
+
+/** Tải toàn bộ nội dung kho bài và bộ gán phòng từ database. Ném lỗi nếu không đọc được. */
+export async function loadContent(): Promise<BankContent> {
+  const [questions, assignments] = await Promise.all([fetchQuestionsFromDb(), fetchAssignmentsFromDb()]);
+  return buildContent(questions, assignments);
 }
 
 /**
- * Xin Cloud cấp `count` mã bài mới để hai admin tạo bài cùng lúc không bị trùng mã.
- * Không gọi được hàm cấp mã thì lấy mã lớn nhất trên Cloud; mất mạng thì đành dùng mã trên máy.
+ * Xin database cấp `count` mã bài mới để hai admin tạo bài cùng lúc không bị trùng mã.
+ * Không gọi được hàm cấp mã thì lấy mã lớn nhất trong database; mất mạng thì đành dùng mã lớn nhất đang có.
  */
 export async function allocateQuestionIds(count: number, takenIds: Set<number>): Promise<{ ids: number[]; fromCloud: boolean }> {
   const localMax = Math.max(0, ...takenIds);

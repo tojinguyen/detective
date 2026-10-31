@@ -25,21 +25,16 @@ import {
   Check
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { allocateQuestionIds, fetchAssignmentsFromDb, fetchQuestionsFromDb, pushPendingAssignments, pushPendingQuestions } from '@/lib/questions-db';
+import { allocateQuestionIds, loadContent, saveAssignments, saveQuestions } from '@/lib/questions-db';
 import { Button } from '@/components/ui/button';
 import { AppHeader } from '@/components/app-header';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
-  DEFAULT_LOCAL_CONTENT,
+  DEFAULT_BANK_CONTENT,
   allQuestions,
-  findLocalQuestion,
-  mergeCloudAssignments,
-  mergeCloudQuestions,
   questionIdsForCase,
-  readLocalContent,
-  writeLocalContent,
-  type LocalContent,
+  type BankContent,
   type Question,
   type QuestionKind,
   type QuestionOption,
@@ -183,24 +178,23 @@ function Segmented<T extends string | number>({ label, value, options, onChange 
   );
 }
 
-function SyncButton({ sync, pending, onSync }: { sync: SyncState; pending: number; onSync: () => void }) {
+function SyncButton({ sync, onSync }: { sync: SyncState; onSync: () => void }) {
   const busy = sync.state === 'syncing';
   const failed = sync.state === 'error';
   const label = busy ? 'Đang đồng bộ…'
-    : failed ? 'Chưa lên Cloud · Thử lại'
-    : pending ? `${pending} thay đổi chưa đồng bộ`
-    : sync.state === 'synced' ? 'Đã đồng bộ Cloud' : 'Đồng bộ Cloud';
+    : failed ? 'Lỗi database · Thử lại'
+    : sync.state === 'synced' ? 'Đã đồng bộ' : 'Tải lại từ database';
   return (
     <button
       type="button"
       onClick={onSync}
       disabled={busy}
-      title={failed ? sync.error : 'Gửi thay đổi trên máy này lên Cloud và tải bản mới nhất về'}
+      title={failed ? sync.error : 'Tải bản mới nhất từ database về'}
       className={`inline-flex items-center gap-2 h-9 px-3 rounded-md border text-xs font-medium transition-colors disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-[#deb97b] ${
         failed ? 'border-[#7a3b3b] bg-[#2a1717] text-[#ffb0a3] hover:bg-[#351c1c]' : 'border-[#2f4853] bg-[#12232b] text-[#b9c9c2] hover:bg-[#182d36]'
       }`}
     >
-      {failed ? <CloudOff size={15} /> : <Cloud size={15} className={busy ? 'animate-pulse text-[#deb97b]' : pending ? 'text-[#e8b35c]' : 'text-[#6dc797]'} />}
+      {failed ? <CloudOff size={15} /> : <Cloud size={15} className={busy ? 'animate-pulse text-[#deb97b]' : 'text-[#6dc797]'} />}
       {label}
     </button>
   );
@@ -208,8 +202,7 @@ function SyncButton({ sync, pending, onSync }: { sync: SyncState; pending: numbe
 
 export default function QuestionBankPage() {
   const { isAdmin, loading } = useAuth();
-  const [content, setContent] = useState<LocalContent>(DEFAULT_LOCAL_CONTENT);
-  const [hydrated, setHydrated] = useState(false);
+  const [content, setContent] = useState<BankContent>(DEFAULT_BANK_CONTENT);
   const [activeTab, setActiveTab] = useState<'bank' | 'case' | 'import'>('bank');
   const [importMode, setImportMode] = useState<'json' | 'latex'>('json');
 
@@ -344,67 +337,46 @@ export default function QuestionBankPage() {
   const pickerTotal = pickerMatches.length;
   const editingQuestion = editingId === null ? null : bank.find(question => question.id === editingId) ?? null;
 
-  /**
-   * Đẩy pendingSyncIds lên Cloud, rồi (nếu pull) tải bản mới nhất về ghép vào.
-   * Bài nào bị sửa tiếp trong lúc đang gửi thì vẫn giữ trong pending cho lần sau.
-   */
-  const syncNow = useCallback(async (pull: boolean, source?: LocalContent) => {
+  /** Tải bản mới nhất từ database về, bỏ mọi thay đổi chưa lưu được. */
+  const reload = useCallback(async () => {
     setSync({ state: 'syncing' });
-    const local = source ?? contentRef.current;
-    // Gửi bài trước, rồi mới gửi bộ gán phòng (phòng có thể đang trỏ tới bài vừa tạo).
-    const push = await pushPendingQuestions(local)
-      .catch((err): Awaited<ReturnType<typeof pushPendingQuestions>> => ({ synced: [], error: errorMessage(err) }));
-    const pushCases = await pushPendingAssignments(local)
-      .catch((err): Awaited<ReturnType<typeof pushPendingAssignments>> => ({ synced: [], error: errorMessage(err) }));
-    let cloud: Question[] | null = null;
-    let cloudAssignments: Record<string, number[]> | null = null;
-    const pullErrors: string[] = [];
-    if (pull) {
-      const [questions, assignments] = await Promise.allSettled([fetchQuestionsFromDb(), fetchAssignmentsFromDb()]);
-      if (questions.status === 'fulfilled') cloud = questions.value; else pullErrors.push(errorMessage(questions.reason));
-      if (assignments.status === 'fulfilled') cloudAssignments = assignments.value; else pullErrors.push('Gán phòng: ' + errorMessage(assignments.reason));
+    try {
+      setContent(await loadContent());
+      setSync({ state: 'synced' });
+    } catch (err) {
+      setSync({ state: 'error', error: errorMessage(err) });
     }
-    const sent = new Map(push.synced.map(entry => [entry.id, entry.snapshot]));
-    const sentCases = new Map(pushCases.synced.map(entry => [entry.caseId, entry.snapshot]));
-    setContent(prev => {
-      let next: LocalContent = {
-        ...prev,
-        pendingSyncIds: prev.pendingSyncIds.filter(id => !sent.has(id) || findLocalQuestion(prev, id) !== sent.get(id)),
-        pendingCaseIds: prev.pendingCaseIds.filter(id => !sentCases.has(id) || prev.caseQuestionIds[id] !== sentCases.get(id)),
-      };
-      if (cloud) next = mergeCloudQuestions(next, cloud);
-      if (cloudAssignments) next = mergeCloudAssignments(next, cloudAssignments);
-      return next;
-    });
-    const error = [push.error, pushCases.error && 'Gán phòng: ' + pushCases.error, ...pullErrors].filter(Boolean).join('; ') || undefined;
-    setSync(error ? { state: 'error', error } : { state: 'synced' });
   }, []);
 
   useEffect(() => {
-    const initial = readLocalContent();
-    setContent(initial);
-    setHydrated(true);
-    syncNow(true, initial);
-  }, [syncNow]);
+    reload();
+  }, [reload]);
 
   useEffect(() => {
     contentRef.current = content;
-    if (hydrated) writeLocalContent(content);
-  }, [content, hydrated]);
+  }, [content]);
 
   /**
-   * Lưu thay đổi trên máy; changedIds (bài) và changedCaseIds (vụ đổi gán phòng)
-   * được đánh dấu chờ và gửi lên Cloud ngay.
+   * Cập nhật giao diện ngay rồi ghi lên database: changedIds là các bài đã đổi/xóa,
+   * changedCaseIds là các vụ đổi gán phòng. Ghi lỗi thì tải lại bản trong database.
    */
-  function persist(next: LocalContent, feedback: string, changedIds: number[] = [], changedCaseIds: string[] = []) {
-    const withPending = {
-      ...next,
-      pendingSyncIds: [...new Set([...next.pendingSyncIds, ...changedIds])],
-      pendingCaseIds: [...new Set([...next.pendingCaseIds, ...changedCaseIds])],
-    };
-    setContent(withPending);
+  async function persist(next: BankContent, feedback: string, changedIds: number[] = [], changedCaseIds: string[] = []) {
+    setContent(next);
+    contentRef.current = next;
     setMessage(feedback);
-    if (changedIds.length || changedCaseIds.length) syncNow(false, withPending);
+    if (!changedIds.length && !changedCaseIds.length) return;
+    setSync({ state: 'syncing' });
+    try {
+      // Ghi bài trước, rồi mới ghi bộ gán phòng (phòng có thể đang trỏ tới bài vừa tạo).
+      await saveQuestions(next, changedIds);
+      await saveAssignments(next, changedCaseIds);
+      setSync({ state: 'synced' });
+    } catch (err) {
+      const error = errorMessage(err);
+      await reload();
+      setMessage('');
+      setSync({ state: 'error', error });
+    }
   }
 
   function storeQuestion(question: Question, feedback: string) {
@@ -611,7 +583,7 @@ export default function QuestionBankPage() {
     const remap = new Map(fresh.map((q, i) => [q, ids[i]]));
     const result = questions.map(q => remap.has(q) ? { ...q, id: remap.get(q)! } : q);
     const range = ids.length > 1 ? `mã ${ids[0]}–${ids[ids.length - 1]}` : `mã ${ids[0]}`;
-    return { questions: result, note: fromCloud ? ` (${range}).` : ` (${range}, cấp tạm trên máy vì chưa kết nối được Cloud).` };
+    return { questions: result, note: fromCloud ? ` (${range}).` : ` (${range}, cấp tạm vì chưa kết nối được database).` };
   }
 
   async function handleSaveJsonQuestions() {
@@ -717,7 +689,7 @@ export default function QuestionBankPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <SyncButton sync={sync} pending={content.pendingSyncIds.length + content.pendingCaseIds.length} onSync={() => syncNow(true)} />
+            <SyncButton sync={sync} onSync={reload} />
             <Button
               variant="ghost"
               onClick={exportContent}
@@ -749,7 +721,7 @@ export default function QuestionBankPage() {
         <div className="bg-[#2a1717] border-b border-[#5c2e2e] px-6 py-2.5 text-xs text-[#ffb0a3]">
           <div className="max-w-[1200px] mx-auto flex items-center gap-2">
             <CloudOff size={15} className="shrink-0" />
-            Không kết nối được Cloud ({sync.error}). Thay đổi vẫn được giữ trên máy này và sẽ gửi lại khi bạn bấm Thử lại.
+            Không lưu được lên database ({sync.error}). Thay đổi chưa được ghi; trang đã tải lại bản trong database.
           </div>
         </div>
       )}
@@ -810,7 +782,6 @@ export default function QuestionBankPage() {
                     const usage = usageById.get(question.id);
                     const isExpanded = expandedId === question.id;
                     const status = STATUS[question.auditStatus] ?? STATUS.draft;
-                    const isPending = content.pendingSyncIds.includes(question.id);
 
                     return (
                       <li key={question.id} className={isExpanded ? 'bg-[#10222a]' : 'bg-[#12232b]'}>
@@ -830,10 +801,8 @@ export default function QuestionBankPage() {
                                 <span className="lg:hidden tabular-nums text-[#ceac79] font-sans text-xs font-semibold mr-2">#{question.id}</span>
                                 {question.topic}
                               </span>
-                              {(isCustom || isPending) && (
-                                <span className="block text-[11px] text-[#7d938b] mt-0.5">
-                                  {isCustom && 'Bài tự tạo'}{isCustom && isPending && ', '}{isPending && <span className="text-[#e8b35c]">chưa lên Cloud</span>}
-                                </span>
+                              {isCustom && (
+                                <span className="block text-[11px] text-[#7d938b] mt-0.5">Bài tự tạo</span>
                               )}
                             </span>
                           </button>
